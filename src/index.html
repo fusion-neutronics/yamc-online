@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>yamc online</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Write yamc Python and run neutron transport in your browser.">
+
+<!--
+  Cross-origin isolation for GitHub Pages, which cannot set COOP/COEP headers.
+  It installs a service worker that adds them and reloads once. Isolation is
+  what lets Stop interrupt Python through a SharedArrayBuffer; without it the
+  page still works, and Stop restarts Python instead.
+-->
+<script src="coi-serviceworker.min.js"></script>
+
+<style>
+  /* Light values on :root so the palette exists unconditionally; the dark
+     blocks only redefine tokens, never introduce one. */
+  :root {
+    --bg: #ffffff;
+    --panel: #f6f7f9;
+    --ink: #1a1c1f;
+    --muted: #5c6370;
+    --line: #d8dce3;
+    --accent: #2f5fd0;
+    --warn: #9a5b00;
+    --warn-bg: #fff5e5;
+    --err: #b3261e;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --tok-keyword: #8a3ab9;
+    --tok-string: #1f7a3a;
+    --tok-number: #a55a00;
+    --tok-comment: #6b7280;
+    --tok-def: #2f5fd0;
+    --tok-builtin: #0f7c8c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --panel: #1c1f25;
+      --ink: #e8eaed;
+      --muted: #99a1ad;
+      --line: #333944;
+      --accent: #7aa2f7;
+      --warn: #e0a458;
+      --warn-bg: #2a2317;
+      --err: #f28b82;
+      --tok-keyword: #c792ea;
+      --tok-string: #a5d6a7;
+      --tok-number: #f0b36b;
+      --tok-comment: #7f8896;
+      --tok-def: #82aaff;
+      --tok-builtin: #6cd4e0;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    padding: 1rem 1.25rem;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex;
+    flex-direction: column;
+  }
+  header { margin: 0 0 .75rem; }
+  h1 { font-size: 1.3rem; margin: 0 0 .15rem; font-weight: 600; }
+  header p { margin: 0; color: var(--muted); font-size: .88rem; }
+  a { color: var(--accent); }
+  code {
+    font-family: var(--mono);
+    font-size: .92em;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: .05rem .3rem;
+  }
+
+  main {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1rem;
+  }
+  @media (max-width: 60rem) {
+    main { grid-template-columns: 1fr; }
+    .pane { min-height: 32rem; }
+  }
+
+  .pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+    align-items: center;
+    padding: .5rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .toolbar .spacer { flex: 1; }
+
+  select, button {
+    font: inherit;
+    font-size: .85rem;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: .3rem .6rem;
+  }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); border-color: transparent; color: #fff; font-weight: 600; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  kbd { font-family: var(--mono); font-size: .75em; opacity: .8; }
+
+  #editor { flex: 1; min-height: 0; overflow: auto; background: var(--bg); }
+  #editor .cm-editor { height: 100%; }
+
+  .status {
+    font-family: var(--mono);
+    font-size: .78rem;
+    color: var(--muted);
+    padding: .3rem .6rem;
+    border-top: 1px solid var(--line);
+    min-height: 1.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tabs { display: flex; gap: .25rem; }
+  .tabs button { background: transparent; border-color: transparent; color: var(--muted); font-weight: 500; }
+  .tabs button[aria-selected="true"] { color: var(--ink); background: var(--bg); border-color: var(--line); }
+  .tabs .count { font-size: .75em; color: var(--muted); margin-left: .2rem; }
+  [hidden] { display: none !important; }
+
+  .tab-body { flex: 1; min-height: 0; overflow: auto; background: var(--bg); }
+
+  #output {
+    margin: 0;
+    padding: .6rem .75rem;
+    font: .8rem/1.45 var(--mono);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  #output .stderr { color: var(--err); }
+  #output .note { color: var(--muted); font-style: italic; }
+
+  #plots { padding: .75rem; }
+  #plots figure { margin: 0 0 1rem; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  #plots figcaption {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: .8rem;
+    color: var(--muted);
+    padding: .3rem .6rem;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  #plots figcaption button { font-size: .75rem; padding: .1rem .45rem; }
+  #plots iframe { display: block; width: 100%; height: 34rem; max-height: 34rem; border: 0; background: #fff; }
+  .empty { color: var(--muted); font-size: .88rem; padding: 1rem; }
+
+  #data { padding: .75rem; font-size: .85rem; }
+  #data p { margin: 0 0 .6rem; }
+  table { width: 100%; border-collapse: collapse; font-size: .82rem; margin-bottom: .75rem; }
+  th, td { text-align: left; padding: .25rem .4rem; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; font-size: .76rem; }
+  td.num, th.num { text-align: right; font-family: var(--mono); }
+  .warn {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn);
+    color: var(--warn);
+    border-radius: 5px;
+    padding: .5rem .6rem;
+    font-size: .82rem;
+    margin: 0 0 .75rem;
+  }
+</style>
+
+<header>
+  <h1>yamc online</h1>
+  <p>
+    Write <a href="https://github.com/fusion-neutronics/yamc">yamc</a> Python and run
+    the neutron transport in your browser. It is the same API as <code>pip install yamc</code>;
+    nothing is uploaded, and nuclear data is fetched only for the nuclides your model uses.
+  </p>
+</header>
+
+<main>
+  <section class="pane" aria-label="Editor">
+    <div class="toolbar">
+      <select id="example" aria-label="Example"></select>
+      <button id="run" class="primary" disabled title="Run (Ctrl+Enter)">Run <kbd>Ctrl+Enter</kbd></button>
+      <button id="stop" disabled>Stop</button>
+      <span class="spacer"></span>
+      <button id="share" title="Copy a link that opens this code">Share</button>
+      <button id="download" title="Save the script to run with pip install yamc">Download .py</button>
+    </div>
+    <div id="editor"></div>
+    <div class="status" id="status" role="status">Starting</div>
+  </section>
+
+  <section class="pane" aria-label="Results">
+    <div class="toolbar tabs" role="tablist">
+      <button role="tab" data-tab="output" aria-selected="true">Output</button>
+      <button role="tab" data-tab="plots" aria-selected="false">Plots<span class="count" id="plot-count"></span></button>
+      <button role="tab" data-tab="data" aria-selected="false">Data</button>
+    </div>
+    <div class="tab-body" data-panel="output"><pre id="output"></pre></div>
+    <div class="tab-body" data-panel="plots" hidden><div id="plots"><p class="empty">Plots from <code>show()</code>, and from lines such as <code>model.plot()</code>, appear here.</p></div></div>
+    <div class="tab-body" data-panel="data" hidden><div id="data"></div></div>
+  </section>
+</main>
+
+<script type="module" src="app.js"></script>
+</html>
