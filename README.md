@@ -27,8 +27,9 @@ them.
   during one Stop restarts Python instead, and the nuclear data is fetched again
   on the next run.
 
-The examples menu has a Li-6 sphere, a water shielding slab, a mesh tally and a
-PbLi breeder blanket. They are also in [examples/](examples/) as plain scripts.
+The examples menu opens on a simple tokamak (an iron centre column, a plasma and
+a Li-6 blanket), and also has a Li-6 sphere, a water shielding slab, a mesh
+tally and a PbLi breeder blanket. They are also in [examples/](examples/) as plain scripts.
 
 ## What the browser cannot do
 

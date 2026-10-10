@@ -12,9 +12,9 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const ORIGIN = "https://yamc-data.xsplot.com/endf-b8.1/neutron";
-// What verify.mjs's examples use: the Li-6 sphere, the water slab and the
-// mesh tally.
-const NUCLIDES = ["Li6", "H1", "O16"];
+// What verify.mjs's examples use: the simple tokamak (Fe56), the Li-6
+// sphere, the water slab and the mesh tally.
+const NUCLIDES = ["Li6", "H1", "O16", "Fe56"];
 const SECTIONS = [
   "version.json", "nuclide.arrow", "energy.arrow", "reactions.arrow", "products.arrow",
   "distributions.arrow", "urr.arrow", "total_nu.arrow", "fission_photon.arrow",

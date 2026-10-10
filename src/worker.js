@@ -211,6 +211,13 @@ function memory() {
 const handlers = {
   async init({ pyodideBase, wheelUrl, data, interruptBuffer }) {
     if (data) dataOrigin = data.endsWith("/") ? data : `${data}/`;
+    // The wheel downloads while Pyodide does, rather than after it: the two
+    // are the bulk of the start-up time and neither needs the other.
+    const wheel = fetch(wheelUrl).then((r) => {
+      if (!r.ok) throw new Error(`could not fetch ${wheelUrl}: HTTP ${r.status}`);
+      return r.arrayBuffer();
+    });
+    wheel.catch(() => {}); // Reported where it is awaited, not as unhandled.
     post({ type: "status", text: "Loading Python" });
     const { loadPyodide } = await import(`${pyodideBase}pyodide.mjs`);
     pyodide = await loadPyodide({ indexURL: pyodideBase });
@@ -218,7 +225,9 @@ const handlers = {
     pyodide.setStderr({ batched: (text) => post({ type: "stderr", text }) });
     if (interruptBuffer) pyodide.setInterruptBuffer(interruptBuffer);
     post({ type: "status", text: "Installing yamc" });
-    await pyodide.loadPackage(wheelUrl, { messageCallback: () => {} });
+    // Unpacked into site-packages from the bytes already fetched; the
+    // extension module is loaded when the prelude imports yamc.
+    pyodide.unpackArchive(await wheel, "wheel");
     await pyodide.runPythonAsync(PRELUDE);
     post({
       type: "ready",
