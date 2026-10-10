@@ -60,12 +60,11 @@ self.yamcShow = (html, title) => post({ type: "plot", html, title });
 // Installed once at boot. `show` is in builtins so a user script and anything
 // it imports can call it without an import, as in a notebook.
 const PRELUDE = `
-import builtins, os, shutil, sys, traceback
+import ast, builtins, os, shutil, sys, traceback
 
 import js
 import yamc
 from yamc import _core
-from pyodide.code import eval_code
 
 
 def _fetch(url, offset, length):
@@ -80,9 +79,9 @@ def show(obj, title=None):
     """Draw an object in the Plots tab.
 
     Anything with a rich HTML display works: geometry and tally plots from
-    \`.plot()\`, a \`TallyResult\`, \`SimulationResults\`, a \`Material\`. The
-    last expression of a script is shown the same way, so a script ending in
-    \`model.plot()\` needs no call to this.
+    \`.plot()\`, a \`TallyResult\`, \`SimulationResults\`, a \`Material\`. A
+    line of a script that is just such an object, such as \`model.plot()\`, is
+    shown the same way wherever it stands, so it needs no call to this.
 
     Args:
         obj: The object to draw. Must have a \`_repr_html_\` method.
@@ -133,6 +132,34 @@ def _print_exception(error):
     sys.stderr.write("".join(lines))
 
 
+def _show_rich(value):
+    # What a top-level expression before the last is wrapped in: drawn if it
+    # has a rich display, and otherwise left alone, as a script would.
+    if hasattr(value, "_repr_html_"):
+        show(value)
+
+
+def _compile(source):
+    """Compile a script so every top-level expression with a rich display is
+    drawn, and the last expression's value comes back.
+
+    A script with \`model.plot()\` partway down then draws it where it stands,
+    as a notebook cell would, rather than only when it is the last line. Every
+    node keeps its line number, so tracebacks point at the script as written.
+    """
+    tree = ast.parse(source, filename=_SCRIPT)
+    last = None
+    if tree.body and isinstance(tree.body[-1], ast.Expr):
+        last = ast.Expression(tree.body.pop().value)
+    for i, node in enumerate(tree.body):
+        if isinstance(node, ast.Expr):
+            call = ast.Call(ast.Name("_show_rich", ast.Load()), [node.value], [])
+            tree.body[i] = ast.copy_location(ast.Expr(ast.copy_location(call, node.value)), node)
+    ast.fix_missing_locations(tree)
+    body = compile(tree, _SCRIPT, "exec")
+    return body, None if last is None else compile(last, _SCRIPT, "eval")
+
+
 def _run(source):
     """Run a script in a fresh namespace, as \`python model.py\` would.
 
@@ -140,9 +167,11 @@ def _run(source):
     call such as time.sleep can suspend to the event loop, and an interrupt
     then lands in the loop's machinery rather than in the script.
     """
-    namespace = {"__name__": "__main__", "__file__": _SCRIPT, "show": show}
+    namespace = {"__name__": "__main__", "__file__": _SCRIPT, "show": show, "_show_rich": _show_rich}
     try:
-        value = eval_code(source, namespace, filename=_SCRIPT)
+        body, last = _compile(source)
+        exec(body, namespace)
+        value = None if last is None else eval(last, namespace)
     except BaseException as error:  # noqa: BLE001  (KeyboardInterrupt too)
         _print_exception(error)
         return False

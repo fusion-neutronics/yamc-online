@@ -15,10 +15,10 @@ them.
   `python model.py`.
 - **Output** shows what the script prints, including the transport's own
   progress and tally summary.
-- **Plots** shows anything passed to `show()`, and the value of the script's
-  last line when it has a rich display, so a script ending in `model.plot()`
-  draws the geometry. Geometry plots, mesh tally plots, `TallyResult` and
-  `SimulationResults` all work.
+- **Plots** shows anything passed to `show()`, and every line of the script
+  that is just an object with a rich display, as a notebook cell does: a
+  `model.plot()` line draws the geometry wherever it stands. Geometry plots,
+  mesh tally plots, `TallyResult` and `SimulationResults` all work.
 - **Data** lists the nuclear data fetched so far, per nuclide, and how much
   memory the session is using.
 - **Share** copies a link with the script compressed into it. The code travels

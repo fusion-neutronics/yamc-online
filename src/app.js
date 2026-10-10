@@ -57,6 +57,12 @@ const theme = EditorView.theme({
     backgroundColor: "color-mix(in srgb, var(--accent) 25%, transparent) !important",
   },
   ".cm-cursor": { borderLeftColor: "var(--ink)" },
+  // The completion list and other tooltips. CodeMirror's own are light grey
+  // whatever the page, which left the dark palette's light text unreadable.
+  ".cm-tooltip": { color: "var(--ink)", backgroundColor: "var(--panel)", border: "1px solid var(--line)" },
+  ".cm-tooltip-autocomplete > ul > li[aria-selected]": { color: "#fff", backgroundColor: "var(--accent)" },
+  ".cm-completionDetail": { color: "var(--muted)" },
+  ".cm-completionMatchedText": { textDecoration: "none", fontWeight: "600" },
 });
 
 let saveTimer = null;

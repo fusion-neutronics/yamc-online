@@ -133,6 +133,16 @@ try {
   check(out.includes("3600 mesh voxels, peak flux 3.876e-01"), "mesh tally matches native", out);
   check((await app(() => window.yamcOnline.plots)) === 1, "mesh tally drew its map");
 
+  // -- A rich line anywhere in the script is drawn ---------------------------
+  // `model.plot()` above `show(result)` is drawn where it stands, before the
+  // result, as a notebook cell would, and not only as the script's last line.
+  const reordered = examples["Li-6 sphere"].replace("show(result)\nmodel.plot()", "model.plot()\nshow(result)\nx = 1");
+  check(reordered !== examples["Li-6 sphere"], "the reordered script differs");
+  await runCode(reordered);
+  const captions = await app(() => [...document.querySelectorAll("#plots figcaption span")].map((s) => s.textContent));
+  check(captions.length === 2 && captions[0] !== "TallyResult" && captions[1] === "TallyResult",
+    "a model.plot() line partway down is drawn, in order", captions.join(", "));
+
   // -- Errors ---------------------------------------------------------------
   out = await runCode("import yamc\n\nx = 1\nyamc.Sphere(radius=-1.0).nonexistent\n");
   check(/File "model\.py", line 4/.test(out), "a traceback points at the script's line", out);
@@ -181,6 +191,27 @@ try {
   check(out.includes("PanicException") && !out.includes("Restarting Python"), "a Rust panic is a Python exception, not a crash", out);
   out = await runCode(examples["Li-6 sphere"]);
   check(out.includes("Tritium production: 3.3274e-02"), "Python runs the example again after a panic");
+
+  // -- Completion list is readable in the dark palette ---------------------
+  {
+    const dark = await browser.newContext({ colorScheme: "dark", viewport: { width: 1400, height: 900 } });
+    const dp = await dark.newPage();
+    await dp.goto(`${base}#code=`);
+    await dp.waitForFunction(() => window.yamcOnline);
+    await dp.evaluate(() => window.yamcOnline.setCode(""));
+    await dp.click("#editor .cm-content");
+    await dp.keyboard.type("imp");
+    const tooltip = dp.locator(".cm-tooltip-autocomplete").first();
+    await tooltip.waitFor({ timeout: 10_000 });
+    const colours = await tooltip.evaluate((el) => {
+      const s = getComputedStyle(el);
+      return [s.color, s.backgroundColor];
+    });
+    // Luminance of an rgb() string, 0 (black) to 1 (white).
+    const lum = (c) => { const [r, g, b] = c.match(/\d+/g).map(Number); return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255; };
+    check(Math.abs(lum(colours[0]) - lum(colours[1])) > 0.5, "the completion list is readable in dark mode", colours.join(" on "));
+    await dark.close();
+  }
 
   // -- Share link -----------------------------------------------------------
   const shared = "import yamc\nprint('shared ✓', 2 + 2)\n";

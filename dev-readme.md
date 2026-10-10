@@ -69,7 +69,11 @@ terminates the worker and starts a fresh one. GitHub Pages cannot send the
 COOP/COEP headers isolation needs, so `coi-serviceworker` adds them and reloads
 the page once; without it, Stop always restarts.
 
-**Plots.** `show(obj)` posts `obj._repr_html_()` to the page, which puts it in
+**Plots.** The script is compiled with each top-level expression statement
+wrapped in a call that shows its value if it has `_repr_html_`, so a
+`model.plot()` line draws wherever it stands; the last expression's value is
+shown, or printed if it has no rich display. `show(obj)` posts
+`obj._repr_html_()` to the page, which puts it in
 an `<iframe sandbox="allow-scripts">`: the viewers' scripts run, but in an
 opaque origin with no access to the page. The frame reports its content height
 so short tables do not sit in a tall box.
