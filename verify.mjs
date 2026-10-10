@@ -11,7 +11,7 @@
 // `--live` runs the default example once more against the published data
 // origin, which is the only part that needs yamc-data.xsplot.com.
 //
-// Needs `node build.mjs` first, and core's fixtures for H1, O16 and Li6:
+// Needs `node build.mjs` first, and core's fixtures for H1, O16, Li6 and Fe56:
 //   python3 scripts/fetch_test_fixtures.py   (in core)
 
 import { existsSync } from "node:fs";
@@ -29,7 +29,7 @@ const check = (cond, msg, detail = "") => (cond ? ok(msg) : fail(`${msg}${detail
 
 const args = process.argv.slice(2);
 
-for (const nuclide of ["Li6", "H1", "O16"]) {
+for (const nuclide of ["Li6", "H1", "O16", "Fe56"]) {
   if (!existsSync(join(FIXTURES, `${nuclide}.arrow`, "version.json"))) {
     console.error(`no ${nuclide} fixture under ${FIXTURES}; run scripts/fetch_test_fixtures.py in core, or set YAMC_FIXTURES`);
     process.exit(1);
@@ -80,13 +80,33 @@ try {
   check(await app(() => self.crossOriginIsolated), "cross-origin isolated, so Stop can interrupt");
 
   const titles = await app(() => [...document.getElementById("example").options].map((o) => o.text));
-  check(titles.join("|") === "Li-6 sphere|Shielding slab|Mesh tally|PbLi breeder blanket", "examples menu", titles.join(", "));
+  check(titles.join("|") === "Simple tokamak|Li-6 sphere|Shielding slab|Mesh tally|PbLi breeder blanket", "examples menu", titles.join(", "));
 
   // -- The default example, with one click ----------------------------------
-  // What a first visitor gets: the editor holds the Li-6 sphere, and Run.
+  // What a first visitor gets: the editor holds the simple tokamak, and Run.
+  check((await app(() => window.yamcOnline.code())).startsWith("# Simple tokamak:"), "the editor opens on the simple tokamak");
   await page.click("#run");
   await page.waitForFunction(() => window.yamcOnline.state === "ready" && window.yamcOnline.plots > 0, null, { timeout: RUN_TIMEOUT });
   let out = await output();
+  // Taken from the page with the wheel in vendor/, against core's fixtures.
+  check(out.includes("Tritium bred per source neutron: 1.0412e+00 +/- 1.1e-02"), "tokamak tritium production", out);
+  check((await app(() => window.yamcOnline.plots)) === 2, "tokamak drew the tally and the geometry");
+  let fetched = await app(() => window.yamcOnline.fetched);
+  const names = fetched.map((f) => f.name).sort().join(",");
+  check(names === "Fe56,Li6", "tokamak fetched Fe56 and Li6", names);
+
+  // -- The Li-6 sphere, on a fresh Python ------------------------------------
+  // A new Python holds no data, so what the Li-6 sphere fetches is its own.
+  await page.goto(`${base}?data=/fixtures/&fresh`);
+  await waitReady();
+  await app(() => {
+    const select = document.getElementById("example");
+    select.value = [...select.options].find((o) => o.text === "Li-6 sphere").value;
+    select.dispatchEvent(new Event("change"));
+  });
+  await page.click("#run");
+  await page.waitForFunction(() => window.yamcOnline.state === "ready" && window.yamcOnline.plots > 0, null, { timeout: RUN_TIMEOUT });
+  out = await output();
   // The native wheel gives this to the digit: the same Rust, the same seed.
   check(out.includes("Tritium production: 3.3274e-02 +/- 8.3e-04 per source neutron"), "Li-6 tritium production matches native", out);
   check((await app(() => window.yamcOnline.plots)) === 2, "Li-6 drew the tally and the geometry");
@@ -100,7 +120,7 @@ try {
   const progressLines = out.split("\n").filter((l) => l.startsWith("Progress:")).length;
   check(progressLines === 1, "progress lines collapse into one", `${progressLines} lines`);
 
-  let fetched = await app(() => window.yamcOnline.fetched);
+  fetched = await app(() => window.yamcOnline.fetched);
   check(fetched.length === 1 && fetched[0].name === "Li6", "fetched Li6 and nothing else", JSON.stringify(fetched));
   const li6Bytes = fetched[0].bytes;
 
