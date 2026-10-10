@@ -1,0 +1,80 @@
+name: Pages
+
+# Builds the page and publishes it. The Pages source must be set to "GitHub
+# Actions" rather than a branch: dist/ only exists after `node build.mjs`, and
+# it is not committed.
+#
+# No secrets. The yamc wheel and the CodeMirror bundle are committed under
+# vendor/, so the build needs nothing but Node. Refreshing the wheel is
+# described in dev-readme.md, and vendor/CORE_COMMIT records where it came from.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time, queued rather than cancelled, so a merge is never
+# published over by an older run.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build the page
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Build
+        run: |
+          node build.mjs | tee build.log
+          {
+            cat build.log
+            echo
+            echo "yamc wheel built from core $(cat vendor/CORE_COMMIT)"
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: Verify it runs
+        # Runs the examples in Chromium against the published data for Li6, H1
+        # and O16, fetched once up front and served locally, and checks the
+        # tally values, the plots, the error paths, Stop, share links, and that
+        # nothing but Pyodide is fetched from another origin.
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          node scripts/fetch-fixtures.mjs .fixtures
+          YAMC_FIXTURES=.fixtures node verify.mjs
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: page
+          path: |
+            dist/
+            verify.png
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

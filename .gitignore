@@ -1,0 +1,13 @@
+# Build output. `node build.mjs` regenerates it from src/, vendor/ and examples/.
+dist/
+
+# vendor/ IS committed: the yamc wheel, the CodeMirror bundle and the
+# coi-serviceworker script, so a build needs no npm install and no Rust.
+
+node_modules/
+
+# Data downloaded by scripts/fetch-fixtures.mjs for verify.mjs in CI.
+.fixtures/
+
+# Screenshot from the verification pass.
+*.png

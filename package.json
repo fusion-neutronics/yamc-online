@@ -1,0 +1,19 @@
+{
+  "name": "yamc-online",
+  "private": true,
+  "type": "module",
+  "description": "Browser page for writing and running yamc Python, on Pyodide",
+  "scripts": {
+    "build": "node build.mjs",
+    "verify": "node verify.mjs",
+    "vendor:codemirror": "node scripts/vendor-codemirror.mjs"
+  },
+  "devDependencies": {
+    "@codemirror/lang-python": "^6.2.1",
+    "codemirror": "^6.0.2",
+    "coi-serviceworker": "^0.1.7",
+    "esbuild": "^0.28.2",
+    "playwright": "^1.62.1",
+    "pyodide": "314.0.7"
+  }
+}
