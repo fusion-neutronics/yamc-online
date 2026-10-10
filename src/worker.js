@@ -34,24 +34,24 @@ const post = (msg) => self.postMessage(msg);
 /// A network failure (offline, or a CORS refusal) throws rather than inventing
 /// a status. The downloader treats a thrown fetch as a failed attempt and
 /// retries, then reports the URL, which is the useful thing to see.
-function fetchSync(url, offset, length) {
+function fetchSync(url, range) {
   const target = url.startsWith(PUBLISHED_ORIGIN) ? dataOrigin + url.slice(PUBLISHED_ORIGIN.length) : url;
   const xhr = new XMLHttpRequest();
   xhr.open("GET", target, false);
   xhr.responseType = "arraybuffer";
-  if (offset != null) xhr.setRequestHeader("Range", `bytes=${offset}-${offset + length - 1}`);
+  if (range != null) xhr.setRequestHeader("Range", range);
   const started = performance.now();
   try {
     xhr.send();
   } catch (e) {
-    post({ type: "fetch", url, offset, length, status: 0, bytes: 0, ms: performance.now() - started });
+    post({ type: "fetch", url, range, status: 0, bytes: 0, ms: performance.now() - started });
     throw new Error(`could not fetch ${target}: ${e.message || e}`);
   }
   const ok = xhr.status >= 200 && xhr.status < 300;
   // Only a success carries a body worth handing over: an error page is not
   // nuclear data, and the downloader only reads the status of a 404.
   const body = ok ? new Uint8Array(xhr.response) : new Uint8Array(0);
-  post({ type: "fetch", url, offset, length, status: xhr.status, bytes: body.length, ms: performance.now() - started });
+  post({ type: "fetch", url, range, status: xhr.status, bytes: body.length, ms: performance.now() - started });
   return [xhr.status, body];
 }
 self.yamcFetch = fetchSync;
@@ -67,8 +67,8 @@ import yamc
 from yamc import _core
 
 
-def _fetch(url, offset, length):
-    status, body = js.yamcFetch(url, offset, length)
+def _fetch(url, range_header):
+    status, body = js.yamcFetch(url, range_header)
     return int(status), body.to_bytes()
 
 
