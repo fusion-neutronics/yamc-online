@@ -17,6 +17,7 @@ const DIST = new URL("./dist/", import.meta.url);
 // The order of the examples menu. The first is what a new visitor sees.
 const EXAMPLE_ORDER = [
   "li6_sphere", "water_shield", "mesh_tally", "gamma_shield", "neutrons_and_photons", "weight_windows", "tokamak",
+  "lithium_activation", "activated_sphere",
 ];
 
 const mb = (n) => `${(n / 1048576).toFixed(2)} MB`;

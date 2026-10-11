@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { chromium } from "playwright";
 
 import { serve, fixtureDir, FIXTURES, FETCHED_FIXTURES } from "./serve.mjs";
-import { NEUTRON, PHOTON } from "./scripts/fetch-fixtures.mjs";
+import { NEUTRON, PHOTON, TRANSMUTATION } from "./scripts/fetch-fixtures.mjs";
 
 const PYODIDE_CDN = "https://cdn.jsdelivr.net";
 const RUN_TIMEOUT = 180_000;
@@ -30,11 +30,16 @@ const check = (cond, msg, detail = "") => (cond ? ok(msg) : fail(`${msg}${detail
 
 const args = process.argv.slice(2);
 
-// Neutron data for Li6, H1 and O16, and photon data for H and O. The tokamak
-// is listed in the menu but not run: lead is too much data for a check.
-for (const name of [...NEUTRON, ...PHOTON]) {
-  if (!existsSync(join(fixtureDir(`${name}.arrow`), `${name}.arrow`, "version.json"))) {
-    console.error(`no ${name} fixture under ${FIXTURES} or ${FETCHED_FIXTURES}; run node scripts/fetch-fixtures.mjs, or set YAMC_FIXTURES`);
+// The neutron, photon and transmutation-chain data scripts/fetch-fixtures.mjs
+// lists. The tokamak is listed in the menu but not run: lead is too much data
+// for a check.
+const fixtureFiles = [
+  ...[...NEUTRON, ...PHOTON].map((name) => [`${name}.arrow`, "version.json"]),
+  ...TRANSMUTATION.map((sub) => [join("transmutation", `${sub}.arrow`), sub === "decay" ? "nuclides.arrow" : `${sub}.arrow`]),
+];
+for (const [dir, file] of fixtureFiles) {
+  if (!existsSync(join(fixtureDir(dir), dir, file))) {
+    console.error(`no ${dir} fixture under ${FIXTURES} or ${FETCHED_FIXTURES}; run node scripts/fetch-fixtures.mjs, or set YAMC_FIXTURES`);
     process.exit(1);
   }
 }
@@ -100,7 +105,7 @@ try {
   check(await app(() => self.crossOriginIsolated), "cross-origin isolated, so Stop can interrupt");
 
   const titles = await app(() => [...document.getElementById("example").options].map((o) => o.text));
-  check(titles.join("|") === "Li-6 sphere|Shielding slab|Mesh tally|Gamma shielding|Neutrons and photons|Weight windows|Tokamak", "examples menu", titles.join(", "));
+  check(titles.join("|") === "Li-6 sphere|Shielding slab|Mesh tally|Gamma shielding|Neutrons and photons|Weight windows|Tokamak|Lithium activation|Activated sphere", "examples menu", titles.join(", "));
 
   // -- The default example, with one click ----------------------------------
   // What a first visitor gets: the editor holds the Li-6 sphere, and Run.
@@ -178,6 +183,25 @@ try {
   check(out.includes("      295    0.000e+00 +/-   0%    9.477e-06 +/-  41%"), "weight windows: only the windows reach the back", out);
   check(out.includes("Layers with a score: analog 27 of 30, weight windows 30 of 30"), "weight windows: layers reached");
   check((await app(() => window.yamcOnline.plots)) === 2, "weight windows drew both flux maps");
+
+  // -- Transmutation ---------------------------------------------------------
+  // Values from the native wheel, which gives the same to the printed digit.
+  const before = new Set((await app(() => window.yamcOnline.fetched)).map((f) => `${f.kind}/${f.name}`));
+  out = await runCode(examples["Lithium activation"]);
+  check(out.includes("Tritium made: 392.0 appm, helium-4: 399.9 appm"), "lithium activation: gas production", out);
+  check(out.includes("30 days of irradiation     5.1970e+13    H3 62.3%"), "lithium activation: activity at shutdown");
+  check(out.includes("1 year more                3.0607e+13    H3 100.0%"), "lithium activation: activity after a year");
+  // What this run fetched: the earlier examples already hold Li6 and H1.
+  fetched = (await app(() => window.yamcOnline.fetched)).filter((f) => !before.has(`${f.kind}/${f.name}`));
+  const chain = fetched.filter((f) => f.kind === "transmutation").map((f) => f.name).sort().join(",");
+  check(chain === "decay,fission_yields,reactions", "lithium activation fetched the transmutation chain", chain);
+  const reached = fetched.filter((f) => f.kind === "neutron").map((f) => f.name).sort().join(",");
+  check(reached === "H2,H3,He3,Li7", "lithium's chain reaches only H, He and Li", reached);
+
+  out = await runCode(examples["Activated sphere"]);
+  check(out.includes("Tritium bred in a year: 6.83 g"), "activated sphere: tritium bred", out);
+  check(out.includes("1 year of operation          3.1120e+15     2.0615e+02"), "activated sphere: activity and decay heat at shutdown");
+  check(out.includes("10 years more                1.3842e+15     1.2619e+00"), "activated sphere: activity and decay heat after cooling");
 
   // -- A rich line anywhere in the script is drawn ---------------------------
   // `model.plot()` above `show(result)` is drawn where it stands, before the
@@ -257,6 +281,38 @@ try {
     const lum = (c) => { const [r, g, b] = c.match(/\d+/g).map(Number); return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255; };
     check(Math.abs(lum(colours[0]) - lum(colours[1])) > 0.5, "the completion list is readable in dark mode", colours.join(" on "));
     await dark.close();
+  }
+
+  // -- Drafts ---------------------------------------------------------------
+  // Edited code is kept for the next visit; an unedited example is not, so a
+  // stale copy of one never hides the example as updated.
+  {
+    const fresh = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    const dp = await fresh.newPage();
+    const draft = () => dp.evaluate(() => localStorage.getItem("yamc-online:draft"));
+    const opened = () => dp.evaluate(() => window.yamcOnline.code());
+    await dp.goto(base);
+    await dp.waitForFunction(() => window.yamcOnline);
+    await dp.evaluate((c) => localStorage.setItem("yamc-online:draft", c), examples["Gamma shielding"]);
+    await dp.reload();
+    await dp.waitForFunction(() => window.yamcOnline);
+    check((await opened()).startsWith("# Li-6 sphere:"), "a draft that is an unedited example is not restored");
+    const edited = `${examples["Gamma shielding"]}print("edited")\n`;
+    await dp.evaluate((c) => window.yamcOnline.setCode(c), edited);
+    await dp.waitForFunction(() => localStorage.getItem("yamc-online:draft") !== null && localStorage.getItem("yamc-online:draft").endsWith('print("edited")\n'));
+    await dp.reload();
+    await dp.waitForFunction(() => window.yamcOnline);
+    check((await opened()) === edited, "an edited draft is restored");
+    await dp.evaluate(() => {
+      // Accept the "Replace the code?" prompt, as a user would.
+      window.confirm = () => true;
+      const select = document.getElementById("example");
+      select.value = "1";
+      select.dispatchEvent(new Event("change"));
+    });
+    await dp.waitForFunction(() => localStorage.getItem("yamc-online:draft") === null);
+    check((await draft()) === null, "choosing an example leaves no draft");
+    await fresh.close();
   }
 
   // -- Share link -----------------------------------------------------------

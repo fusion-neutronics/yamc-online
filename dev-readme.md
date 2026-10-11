@@ -31,19 +31,21 @@ The page needs serving over HTTP; `file://` cannot start a module worker.
 ```bash
 npm ci
 node build.mjs
-node scripts/fetch-fixtures.mjs   # once: the H and O photon data core's fixtures lack
+node scripts/fetch-fixtures.mjs   # once: what core's fixtures lack (photon data, H3, He3, the chain)
 node verify.mjs           # against the fixtures, offline except for Pyodide
 node verify.mjs --live    # plus runs against yamc-data.xsplot.com
 ```
 
-It runs the examples and checks the printed tally values against the native
-wheel's to the printed digit, the plot frames and the geometry viewer, that a
-rerun fetches nothing, tracebacks, the mesh-geometry error, a Rust panic, Stop
-(both the interrupt and the restart), share links, and that nothing but Pyodide
-is fetched from another origin. CI runs the same against the published Li6, H1
-and O16 neutron data and H and O photon data, fetched by
-`scripts/fetch-fixtures.mjs`. The tokamak is listed but not run: its lead is
-too much data for a check.
+It runs the examples and checks the printed tally and inventory values against
+the native wheel's to the printed digit, the plot frames and the geometry
+viewer, that a rerun fetches nothing, that the lithium transmutation chain
+reaches only H, He and Li, tracebacks, the mesh-geometry error, a Rust panic,
+Stop (both the interrupt and the restart), that only edited code is kept as a
+draft, share links, and that nothing but Pyodide is fetched from another
+origin. CI runs the same against the published data `scripts/fetch-fixtures.mjs`
+lists: Li6, Li7, H1, H2, H3, He3 and O16 neutron data, H and O photon data, and
+the endf-b8.1 transmutation chain. The tokamak is listed but not run: its lead
+is too much data for a check.
 
 ## How it works
 

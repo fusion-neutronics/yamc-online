@@ -42,10 +42,12 @@ jobs:
           } >> $GITHUB_STEP_SUMMARY
 
       - name: Verify it runs
-        # Runs the examples in Chromium against the published data for Li6, H1
-        # and O16, and photon data for H and O, fetched once up front and served locally, and checks the
-        # tally values, the plots, the error paths, Stop, share links, and that
-        # nothing but Pyodide is fetched from another origin.
+        # Runs the examples in Chromium against the published data that
+        # scripts/fetch-fixtures.mjs lists (light neutron nuclides, H and O
+        # photon data, the transmutation chain), fetched once up front and
+        # served locally, and checks the tally and inventory values, the
+        # plots, the error paths, Stop, drafts, share links, and that nothing
+        # but Pyodide is fetched from another origin.
         run: |
           npm ci
           npx playwright install --with-deps chromium

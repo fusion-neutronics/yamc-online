@@ -1,8 +1,10 @@
 # yamc-online
 
 Write [yamc](https://github.com/fusion-neutronics/yamc) Python in the browser and
-run the neutron transport there. The API is the one `pip install yamc` gives
-you, so a script that runs here runs locally, and **Download .py** saves it.
+run it there: neutron, photon and coupled transport, variance reduction,
+transmutation and activation, decay photon sources. The API is the one
+`pip install yamc` gives you, so a script that runs here runs locally, and
+**Download .py** saves it.
 
 Nothing is installed and nothing is uploaded. Python and yamc run in your
 browser through [Pyodide](https://pyodide.org), and the only data fetched is the
@@ -29,9 +31,10 @@ them.
 
 The examples menu opens on a Li-6 sphere, and also has a water shielding slab,
 a mesh tally, a gamma shield (a photon source), coupled neutron and photon
-transport, weight windows for deep penetration, and a tokamak with a PbLi
-breeder blanket (about 145 MB of nuclear data on its first run). They are also
-in [examples/](examples/) as plain scripts.
+transport, weight windows for deep penetration, a tokamak with a PbLi
+breeder blanket (about 145 MB of nuclear data on its first run), lithium
+activated by a given flux spectrum, and a lithium hydride sphere activated by
+its own transport. They are also in [examples/](examples/) as plain scripts.
 
 ## What the browser cannot do
 
@@ -45,6 +48,11 @@ in [examples/](examples/) as plain scripts.
 - **Nuclear data is downloaded per nuclide.** Light nuclides are a megabyte or
   two; heavy ones such as lead, iron or tungsten are 15 to 50 MB each. The Data
   tab shows what was fetched.
+- **Transmutation fetches cross sections for every nuclide the chain can
+  reach.** The chain data itself is about 13 MB. From beryllium upwards the
+  reachable chain is the same 461 nuclides whatever the material, about 650 MB
+  (aluminium, say). Hydrogen, helium and lithium reach only each other, which
+  is why the transmutation examples use them.
 
 ## Development
 
