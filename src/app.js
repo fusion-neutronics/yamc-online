@@ -167,18 +167,25 @@ for (const b of document.querySelectorAll("[role=tab]")) {
 // Output
 // ---------------------------------------------------------------------------
 
-// The transport prints a progress line every tenth of the run. Each one
-// replaces the last rather than scrolling the useful output away.
+// Lines that report progress, each kind by how it starts: the transport's
+// every tenth of the run, and the nuclear-data download's count of nuclides.
+// Each replaces the last of its kind rather than scrolling the useful output
+// away.
+const PROGRESS = [["Progress:", "transport"], ["Downloaded ", "download"]];
 let lastLine = null;
 function appendOutput(text, kind) {
-  const isProgress = kind === "stdout" && text.startsWith("Progress:");
-  if (isProgress && lastLine && lastLine.dataset.progress) {
+  const progress = kind === "stdout" ? (PROGRESS.find(([start]) => text.startsWith(start)) || [])[1] : undefined;
+  if (progress === "download") {
+    downloading = text;
+    setStatus(text);
+  }
+  if (progress && lastLine && lastLine.dataset.progress === progress) {
     lastLine.textContent = `${text}\n`;
     return;
   }
   const span = document.createElement("span");
   if (kind !== "stdout") span.className = kind;
-  if (isProgress) span.dataset.progress = "1";
+  if (progress) span.dataset.progress = progress;
   span.textContent = `${text}\n`;
   els.output.append(span);
   lastLine = span;
@@ -257,7 +264,9 @@ function clearResults() {
 // Per nuclide (or element, for photon data) across the session. Reruns read
 // from the in-memory cache and add nothing, so this is what the page holds.
 const fetched = new Map();
-let runFetch = { requests: 0, bytes: 0 };
+let runFetch = { requests: 0, bytes: 0, batched: 0 };
+// The latest "Downloaded 4 of 9 nuclides" line of this run, for the status bar.
+let downloading = null;
 let memory = { heap: 0, held: 0 };
 let session = { dataOrigin: "" };
 
@@ -274,7 +283,8 @@ function recordFetch(f) {
   fetched.set(key, row);
   runFetch.requests += 1;
   runFetch.bytes += f.bytes;
-  setStatus(`Fetching ${name} (${mb(runFetch.bytes)} so far)`);
+  if (f.batched) runFetch.batched += 1;
+  setStatus(`${downloading || `Fetching ${name}`} (${mb(runFetch.bytes)} so far)`);
   if (!document.querySelector('[data-panel="data"]').hidden) renderData();
 }
 
@@ -348,6 +358,10 @@ function startWorker() {
   interrupt = self.crossOriginIsolated ? new Uint8Array(new SharedArrayBuffer(1)) : null;
   const data = new URLSearchParams(location.search).get("data");
   worker.onmessage = (e) => onWorkerMessage(e.data);
+  // The worker's helper reports the requests of a batch on this channel,
+  // while the worker itself is blocked waiting for them.
+  const fetches = new MessageChannel();
+  fetches.port1.onmessage = (e) => onWorkerMessage(e.data);
   worker.onerror = (e) => {
     appendOutput(`The Python worker failed to start: ${e.message || "unknown error"}`, "stderr");
     setStatus("Python failed to start");
@@ -358,7 +372,8 @@ function startWorker() {
     wheelUrl: new URL(WHEEL, location.href).href,
     data: data ? new URL(data, location.href).href : null,
     interruptBuffer: interrupt,
-  });
+    fetchPort: fetches.port2,
+  }, [fetches.port2]);
 }
 
 function restartWorker(reason) {
@@ -443,7 +458,8 @@ function run() {
   if (state !== "ready") return;
   clearResults();
   selectTab("output");
-  runFetch = { requests: 0, bytes: 0 };
+  runFetch = { requests: 0, bytes: 0, batched: 0 };
+  downloading = null;
   setState("running");
   setStatus("Running...");
   worker.postMessage({ type: "run", code: code() });
@@ -493,4 +509,6 @@ window.yamcOnline = {
   get state() { return state; },
   get plots() { return plotCount; },
   get fetched() { return [...fetched.values()]; },
+  // This run's requests, and how many of them went out in a batch.
+  get runFetch() { return { ...runFetch }; },
 };

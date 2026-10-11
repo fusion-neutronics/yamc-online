@@ -54,6 +54,23 @@ context.on("request", (r) => {
   offOrigin.add(url);
 });
 
+// Nuclear-data requests in flight, from the page, its worker and the worker's
+// fetch helper: a batch has several at once.
+let dataInFlight = 0;
+let dataPeak = 0;
+const isData = (r) => r.url().startsWith(`${base}fixtures/`);
+context.on("request", (r) => { if (isData(r)) dataPeak = Math.max(dataPeak, ++dataInFlight); });
+context.on("requestfinished", (r) => { if (isData(r)) dataInFlight--; });
+context.on("requestfailed", (r) => { if (isData(r)) dataInFlight--; });
+
+/// The download counter's lines in `out`: one, reading "Downloaded M of M",
+/// is what a run that fetched anything should leave.
+function checkDownloadCounter(out, label, what) {
+  const lines = out.split("\n").filter((l) => l.startsWith("Downloaded "));
+  const m = lines.length === 1 && lines[0].match(/^Downloaded (\d+) of (\d+) (.+)$/);
+  check(m && m[1] === m[2] && m[3] === what, `${label}: the download counter reaches M of M ${what}, on one line`, lines.join(" | "));
+}
+
 const page = await context.newPage();
 const pageErrors = [];
 page.on("pageerror", (e) => pageErrors.push(e.message));
@@ -103,6 +120,10 @@ try {
   ok("geometry viewer drew a canvas");
   const progressLines = out.split("\n").filter((l) => l.startsWith("Progress:")).length;
   check(progressLines === 1, "progress lines collapse into one", `${progressLines} lines`);
+  checkDownloadCounter(out, "Li-6", "nuclides");
+  const li6Run = await app(() => window.yamcOnline.runFetch);
+  check(li6Run.batched > 1 && li6Run.batched <= li6Run.requests, "the downloads went out as a batch", JSON.stringify(li6Run));
+  check(dataPeak > 1, "data requests were in flight together", `peak ${dataPeak}`);
 
   let fetched = await app(() => window.yamcOnline.fetched);
   check(fetched.length === 1 && fetched[0].name === "Li6", "fetched Li6 and nothing else", JSON.stringify(fetched));
@@ -146,6 +167,7 @@ try {
   fetched = await app(() => window.yamcOnline.fetched);
   const photonData = fetched.filter((f) => f.kind === "photon").map((f) => f.name).sort().join(",");
   check(photonData === "H,O", "gamma shield fetched photon data for H and O", photonData);
+  checkDownloadCounter(out, "gamma shield", "elements");
 
   out = await runCode(examples["Neutrons and photons"]);
   check(out.includes("Photon heating:  3.077 MeV per source neutron"), "coupled: photon heating", out);

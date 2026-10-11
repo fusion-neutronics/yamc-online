@@ -48,7 +48,7 @@ async function main() {
 
   await rm(DIST, { recursive: true, force: true });
   await mkdir(DIST, { recursive: true });
-  for (const f of ["index.html", "app.js", "worker.js"]) await copyFile(new URL(f, SRC), new URL(f, DIST));
+  for (const f of ["index.html", "app.js", "worker.js", "fetcher.js"]) await copyFile(new URL(f, SRC), new URL(f, DIST));
   for (const f of ["codemirror.js", "coi-serviceworker.min.js", wheel]) await copyFile(new URL(f, VENDOR), new URL(f, DIST));
   // GitHub Pages runs Jekyll otherwise, which would drop nothing here today
   // but has opinions about underscored names.
