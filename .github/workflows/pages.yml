@@ -4,9 +4,9 @@ name: Pages
 # Actions" rather than a branch: dist/ only exists after `node build.mjs`, and
 # it is not committed.
 #
-# No secrets. The yamc wheel and the CodeMirror bundle are committed under
-# vendor/, so the build needs nothing but Node. Refreshing the wheel is
-# described in dev-readme.md, and vendor/CORE_COMMIT records where it came from.
+# No secrets. The page installs yamc-core from PyPI at the version
+# vendor/YAMC_CORE_VERSION pins, and the CodeMirror bundle is committed under
+# vendor/, so the build needs nothing but Node.
 
 on:
   push:
@@ -33,21 +33,16 @@ jobs:
           node-version: "22"
 
       - name: Build
-        run: |
-          node build.mjs | tee build.log
-          {
-            cat build.log
-            echo
-            echo "yamc wheel built from core $(cat vendor/CORE_COMMIT)"
-          } >> $GITHUB_STEP_SUMMARY
+        run: node build.mjs | tee -a $GITHUB_STEP_SUMMARY
 
       - name: Verify it runs
-        # Runs the examples in Chromium against the published data that
-        # scripts/fetch-fixtures.mjs lists (light neutron nuclides, H and O
-        # photon data, the transmutation chain), fetched once up front and
-        # served locally, and checks the tally and inventory values, the
-        # plots, the error paths, Stop, drafts, share links, and that nothing
-        # but Pyodide is fetched from another origin.
+        # Runs the examples in Chromium, with yamc-core installed from PyPI,
+        # against the published data that scripts/fetch-fixtures.mjs lists
+        # (light neutron nuclides, H and O photon data, the transmutation
+        # chain), fetched once up front and served locally, and checks the
+        # tally and inventory values, the plots, the error paths, Stop,
+        # drafts, share links, and that nothing but Pyodide and PyPI is
+        # fetched from another origin.
         run: |
           npm ci
           npx playwright install --with-deps chromium

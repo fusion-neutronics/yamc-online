@@ -1,6 +1,6 @@
 // Rebuild vendor/codemirror.js from the versions pinned in package-lock.json.
 //
-// The bundle is committed, like the wheel, so `node build.mjs` and the Pages
+// The bundle is committed, so `node build.mjs` and the Pages
 // workflow need no npm install to produce the page. Run this after bumping a
 // CodeMirror package:
 //

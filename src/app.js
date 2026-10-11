@@ -8,7 +8,7 @@ import {
   EditorView, basicSetup, keymap, EditorState, indentWithTab, python,
   HighlightStyle, syntaxHighlighting, tags,
 } from "./codemirror.js";
-import { PYODIDE_VERSION, WHEEL, CORE_COMMIT, EXAMPLES } from "./config.js";
+import { PYODIDE_VERSION, YAMC_CORE_VERSION, WHEEL, EXAMPLES } from "./config.js";
 
 const PYODIDE_BASE = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
 const DRAFT_KEY = "yamc-online:draft";
@@ -283,10 +283,14 @@ let memory = { heap: 0, held: 0 };
 let session = { dataOrigin: "" };
 
 function recordFetch(f) {
-  // https://yamc-data.xsplot.com/<library>/<kind>/<Name>.arrow/<section>
+  // https://yamc-data.xsplot.com/<library>/<release>/<kind>/<Name>.arrow/<section>,
+  // or the library's release index: <library>/latest.json, the pointer to the
+  // current release, and <library>/<release>/manifest.json, its list of files.
   const parts = new URL(f.url).pathname.split("/").filter(Boolean);
-  const [library, kind] = parts;
-  const name = (parts[2] || f.url).replace(/\.arrow$/, "");
+  const inRelease = parts.length >= 5;
+  const library = inRelease ? `${parts[0]} ${parts[1]}` : parts[0];
+  const kind = inRelease ? parts[2] : "release";
+  const name = inRelease ? parts[3].replace(/\.arrow$/, "") : "index";
   const key = `${library}/${kind}/${name}`;
   const row = fetched.get(key) || { library, kind, name, requests: 0, bytes: 0, missing: 0 };
   row.requests += 1;
@@ -328,9 +332,9 @@ function renderData() {
   } else {
     parts.push('<p class="empty">Nothing fetched yet.</p>');
   }
-  parts.push(`<p class="note">yamc ${escapeHtml(session.yamc || "")}, Python ${escapeHtml(session.python || "")},
-    Pyodide ${escapeHtml(session.pyodide || PYODIDE_VERSION)}, built from core
-    <code>${escapeHtml(CORE_COMMIT.slice(0, 12))}</code>.</p>`);
+  const from = WHEEL ? `from <code>${escapeHtml(WHEEL)}</code>` : "from PyPI";
+  parts.push(`<p class="note">yamc-core ${escapeHtml(session.yamc || YAMC_CORE_VERSION)} ${from},
+    Python ${escapeHtml(session.python || "")}, Pyodide ${escapeHtml(session.pyodide || PYODIDE_VERSION)}.</p>`);
   els.data.innerHTML = parts.join("");
   const clear = $("clear-data");
   if (clear) clear.addEventListener("click", () => worker.postMessage({ type: "clearData" }));
@@ -381,7 +385,9 @@ function startWorker() {
   worker.postMessage({
     type: "init",
     pyodideBase: PYODIDE_BASE,
-    wheelUrl: new URL(WHEEL, location.href).href,
+    pyodideVersion: PYODIDE_VERSION,
+    yamcCore: YAMC_CORE_VERSION,
+    wheelUrl: WHEEL ? new URL(WHEEL, location.href).href : null,
     data: data ? new URL(data, location.href).href : null,
     interruptBuffer: interrupt,
     fetchPort: fetches.port2,

@@ -1,7 +1,7 @@
 # Build output. `node build.mjs` regenerates it from src/, vendor/ and examples/.
 dist/
 
-# vendor/ IS committed: the yamc wheel, the CodeMirror bundle and the
+# vendor/ IS committed: the version pins, the CodeMirror bundle and the
 # coi-serviceworker script, so a build needs no npm install and no Rust.
 
 node_modules/

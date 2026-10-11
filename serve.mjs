@@ -10,12 +10,18 @@
 // .fixtures/, which `node scripts/fetch-fixtures.mjs` fills (with the
 // transmutation chain too). They are endf-b8.1 only.
 //
+// The fixtures are served in the published release layout: a `latest.json`
+// naming a release called `fixtures`, whose `manifest.json` lists every
+// fixture file with its size and sha256, worked out here from the files
+// themselves, so the wheel checks what it reads as it does against the origin.
+//
 // The page is served cross-origin isolated, as GitHub Pages serves it once
 // coi-serviceworker has reloaded it, so Stop can interrupt Python.
 // `--no-isolation` serves it without, to check the restart fallback.
 
 import { createServer } from "node:http";
-import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -38,17 +44,78 @@ const TYPES = {
   ".whl": "application/zip",
 };
 
-/// Map `/fixtures/endf-b8.1/neutron/Li6.arrow/reactions.arrow` (or
-/// `photon/Fe.arrow/element.arrow`, or `transmutation/decay.arrow/nuclides.arrow`)
-/// onto the fixture tree, or null for anything the fixtures do not carry. Core
-/// keeps neutron nuclides and photon elements side by side in one directory;
-/// their names never clash. The transmutation chain's subsections sit under
-/// `transmutation/`.
-function fixturePath(path) {
-  const m = path.match(/^\/fixtures\/endf-b8\.1\/(neutron|photon|transmutation)\/([A-Za-z0-9_]+\.arrow)\/([a-z_]+\.(?:arrow|json))$/);
-  if (!m) return null;
-  const name = m[1] === "transmutation" ? join("transmutation", m[2]) : m[2];
-  return join(fixtureDir(name), name, m[3]);
+const KEYWORD = "endf-b8.1";
+const RELEASE = "fixtures";
+
+/// The fixtures as one release: `files` maps each path in the release
+/// (`neutron/Li6.arrow/reactions.arrow`, `photon/O.arrow/element.arrow`,
+/// `transmutation/decay.arrow/nuclides.arrow`) to the file serving it, and
+/// `latest` and `manifest` are the two index objects. Core keeps neutron
+/// nuclides and photon elements side by side in one directory; a nuclide's
+/// name carries its mass number and an element's does not. A name in both
+/// fixture directories is read from the first. Built on first use.
+let release = null;
+function fixtureRelease() {
+  if (release) return release;
+  const files = new Map();
+  const add = (releaseDir, dir) => {
+    for (const f of readdirSync(dir)) {
+      const file = join(dir, f);
+      if (!/\.(arrow|json)$/.test(f) || !statSync(file).isFile()) continue;
+      const path = `${releaseDir}/${f}`;
+      if (!files.has(path)) files.set(path, file);
+    }
+  };
+  for (const root of [FIXTURES, FETCHED_FIXTURES]) {
+    if (!existsSync(root)) continue;
+    for (const d of readdirSync(root)) {
+      if (!d.endsWith(".arrow") || !statSync(join(root, d)).isDirectory()) continue;
+      add(`${/\d/.test(d) ? "neutron" : "photon"}/${d}`, join(root, d));
+    }
+    const chain = join(root, "transmutation");
+    if (!existsSync(chain)) continue;
+    for (const d of readdirSync(chain)) {
+      if (d.endsWith(".arrow")) add(`transmutation/${d}`, join(chain, d));
+    }
+  }
+  const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+  const manifest = Buffer.from(JSON.stringify({
+    schema: "yamc-data-manifest",
+    keyword: KEYWORD,
+    release: RELEASE,
+    format_version: 2,
+    files: [...files].sort().map(([path, file]) => {
+      const bytes = readFileSync(file);
+      return { path, bytes: bytes.length, sha256: sha256(bytes) };
+    }),
+  }));
+  const latest = Buffer.from(JSON.stringify({
+    schema: "yamc-data-latest",
+    keyword: KEYWORD,
+    release: RELEASE,
+    format_version: 2,
+    manifest: `${RELEASE}/manifest.json`,
+    manifest_bytes: manifest.length,
+    manifest_sha256: sha256(manifest),
+  }));
+  release = { files, latest, manifest };
+  return release;
+}
+
+/// Answer a `/fixtures/` request: the release index, or a fixture file by
+/// its path in the release. Anything else is not in the fixtures.
+function sendFixture(req, res, path, headers) {
+  const rel = path.slice("/fixtures/".length);
+  const { files, latest, manifest } = fixtureRelease();
+  const index = { [`${KEYWORD}/latest.json`]: latest, [`${KEYWORD}/${RELEASE}/manifest.json`]: manifest }[rel];
+  if (index) {
+    res.writeHead(200, { ...headers, "Content-Type": "application/json", "Content-Length": index.length });
+    return res.end(index);
+  }
+  const prefix = `${KEYWORD}/${RELEASE}/`;
+  const file = rel.startsWith(prefix) && files.get(rel.slice(prefix.length));
+  if (!file) return res.writeHead(404, headers).end("not in the fixtures");
+  return sendFile(req, res, file, headers);
 }
 
 function staticPath(path) {
@@ -101,11 +168,7 @@ export function serve({ port = 8000, isolation = true } = {}) {
       headers["Cross-Origin-Opener-Policy"] = "same-origin";
       headers["Cross-Origin-Embedder-Policy"] = "require-corp";
     }
-    if (path.startsWith("/fixtures/")) {
-      const file = fixturePath(path);
-      if (!file) return res.writeHead(404, headers).end("not in the fixtures");
-      return sendFile(req, res, file, headers);
-    }
+    if (path.startsWith("/fixtures/")) return sendFixture(req, res, path, headers);
     const file = staticPath(path);
     if (!file) return res.writeHead(403, headers).end();
     return sendFile(req, res, file, headers);

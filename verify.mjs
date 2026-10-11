@@ -3,8 +3,10 @@
 //
 // The page is served from dist/ with core's nuclear-data fixtures beside it
 // (see serve.mjs), and opened with `?data=/fixtures/`, so the worker's own
-// fetch path is exercised against real data without the network. Pyodide is
-// the one thing fetched from outside, from the CDN, as it is in production.
+// fetch path is exercised against real data without the network. Pyodide
+// comes from the CDN and yamc-core from PyPI, as in production, unless the
+// page was built with `node build.mjs --wheel <path>`: then the wheel is
+// installed from beside the page, and PyPI is not asked at all.
 //
 //   node verify.mjs [--headed] [--live]
 //
@@ -19,9 +21,13 @@ import { join } from "node:path";
 import { chromium } from "playwright";
 
 import { serve, fixtureDir, FIXTURES, FETCHED_FIXTURES } from "./serve.mjs";
+import { WHEEL, YAMC_CORE_VERSION } from "./dist/config.js";
 import { NEUTRON, PHOTON, TRANSMUTATION } from "./scripts/fetch-fixtures.mjs";
 
 const PYODIDE_CDN = "https://cdn.jsdelivr.net";
+// Where yamc-core comes from when the page installs the PyPI release: the
+// JSON API naming the wheel, and the host serving it.
+const PYPI = ["https://pypi.org/", "https://files.pythonhosted.org/"];
 const RUN_TIMEOUT = 180_000;
 
 const fail = (msg) => { console.error(`FAIL  ${msg}`); process.exitCode = 1; };
@@ -55,6 +61,7 @@ const offOrigin = new Set();
 context.on("request", (r) => {
   const url = r.url();
   if (url.startsWith(base) || url.startsWith(`${PYODIDE_CDN}/`) || url.startsWith("data:") || url.startsWith("blob:")) return;
+  if (!WHEEL && PYPI.some((p) => url.startsWith(p))) return;
   if (url === "about:srcdoc") return;
   offOrigin.add(url);
 });
@@ -101,7 +108,10 @@ try {
   // -- Boot -----------------------------------------------------------------
   await page.goto(`${base}?data=/fixtures/`);
   await waitReady();
-  ok(`booted: ${await status()}`);
+  const booted = await status();
+  ok(`booted: ${booted}`);
+  if (WHEEL) ok(`installed yamc-core from ${WHEEL}, not PyPI`);
+  else check(booted.includes(`yamc ${YAMC_CORE_VERSION} `), `installed yamc-core ${YAMC_CORE_VERSION} from PyPI`, booted);
   check(await app(() => self.crossOriginIsolated), "cross-origin isolated, so Stop can interrupt");
 
   const titles = await app(() => [...document.getElementById("example").options].map((o) => o.text));
@@ -130,14 +140,16 @@ try {
   check(li6Run.batched > 1 && li6Run.batched <= li6Run.requests, "the downloads went out as a batch", JSON.stringify(li6Run));
   check(dataPeak > 1, "data requests were in flight together", `peak ${dataPeak}`);
 
-  let fetched = await app(() => window.yamcOnline.fetched);
+  // Besides the release index (latest.json and the manifest).
+  const nuclearData = async () => (await app(() => window.yamcOnline.fetched)).filter((f) => f.kind !== "release");
+  let fetched = await nuclearData();
   check(fetched.length === 1 && fetched[0].name === "Li6", "fetched Li6 and nothing else", JSON.stringify(fetched));
   const li6Bytes = fetched[0].bytes;
 
   // -- Reruns read the held data --------------------------------------------
   await app(() => window.yamcOnline.run());
   await page.waitForFunction(() => window.yamcOnline.state === "ready" && window.yamcOnline.plots > 0, null, { timeout: RUN_TIMEOUT });
-  fetched = await app(() => window.yamcOnline.fetched);
+  fetched = await nuclearData();
   check(fetched[0].bytes === li6Bytes, "a rerun fetches nothing", `${fetched[0].bytes} vs ${li6Bytes}`);
 
   // -- Data tab -------------------------------------------------------------
@@ -347,7 +359,8 @@ try {
 
   // -- What the page asked for ----------------------------------------------
   const allowed = args.includes("--live") ? [...offOrigin].filter((u) => !u.startsWith("https://yamc-data.xsplot.com/")) : [...offOrigin];
-  check(allowed.length === 0, "no requests off-origin except the Pyodide CDN", allowed.slice(0, 5).join(", "));
+  const except = WHEEL ? "the Pyodide CDN" : "the Pyodide CDN and PyPI";
+  check(allowed.length === 0, `no requests off-origin except ${except}`, allowed.slice(0, 5).join(", "));
   check(pageErrors.length === 0, "no uncaught page errors", pageErrors.join("; "));
 
   await page.screenshot({ path: "verify.png" });
