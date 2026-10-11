@@ -8,17 +8,18 @@
 //
 //   node verify.mjs [--headed] [--live]
 //
-// `--live` runs the default example once more against the published data
-// origin, which is the only part that needs yamc-data.xsplot.com.
+// `--live` runs the default example and the gamma shield once more against
+// the published data origin, which is the only part that needs yamc-data.xsplot.com.
 //
-// Needs `node build.mjs` first, and core's fixtures for H1, O16, Li6 and Fe56:
-//   python3 scripts/fetch_test_fixtures.py   (in core)
+// Needs `node build.mjs` first, and the nuclear data scripts/fetch-fixtures.mjs
+// lists, from core's fixtures or from `node scripts/fetch-fixtures.mjs`.
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
 
-import { serve, FIXTURES } from "./serve.mjs";
+import { serve, fixtureDir, FIXTURES, FETCHED_FIXTURES } from "./serve.mjs";
+import { NEUTRON, PHOTON } from "./scripts/fetch-fixtures.mjs";
 
 const PYODIDE_CDN = "https://cdn.jsdelivr.net";
 const RUN_TIMEOUT = 180_000;
@@ -29,9 +30,11 @@ const check = (cond, msg, detail = "") => (cond ? ok(msg) : fail(`${msg}${detail
 
 const args = process.argv.slice(2);
 
-for (const nuclide of ["Li6", "H1", "O16", "Fe56"]) {
-  if (!existsSync(join(FIXTURES, `${nuclide}.arrow`, "version.json"))) {
-    console.error(`no ${nuclide} fixture under ${FIXTURES}; run scripts/fetch_test_fixtures.py in core, or set YAMC_FIXTURES`);
+// Neutron data for Li6, H1 and O16, and photon data for H and O. The tokamak
+// is listed in the menu but not run: lead is too much data for a check.
+for (const name of [...NEUTRON, ...PHOTON]) {
+  if (!existsSync(join(fixtureDir(`${name}.arrow`), `${name}.arrow`, "version.json"))) {
+    console.error(`no ${name} fixture under ${FIXTURES} or ${FETCHED_FIXTURES}; run node scripts/fetch-fixtures.mjs, or set YAMC_FIXTURES`);
     process.exit(1);
   }
 }
@@ -80,33 +83,14 @@ try {
   check(await app(() => self.crossOriginIsolated), "cross-origin isolated, so Stop can interrupt");
 
   const titles = await app(() => [...document.getElementById("example").options].map((o) => o.text));
-  check(titles.join("|") === "Simple tokamak|Li-6 sphere|Shielding slab|Mesh tally|PbLi breeder blanket", "examples menu", titles.join(", "));
+  check(titles.join("|") === "Li-6 sphere|Shielding slab|Mesh tally|Gamma shielding|Neutrons and photons|Weight windows|Tokamak", "examples menu", titles.join(", "));
 
   // -- The default example, with one click ----------------------------------
-  // What a first visitor gets: the editor holds the simple tokamak, and Run.
-  check((await app(() => window.yamcOnline.code())).startsWith("# Simple tokamak:"), "the editor opens on the simple tokamak");
+  // What a first visitor gets: the editor holds the Li-6 sphere, and Run.
+  check((await app(() => window.yamcOnline.code())).startsWith("# Li-6 sphere:"), "the editor opens on the Li-6 sphere");
   await page.click("#run");
   await page.waitForFunction(() => window.yamcOnline.state === "ready" && window.yamcOnline.plots > 0, null, { timeout: RUN_TIMEOUT });
   let out = await output();
-  // Taken from the page with the wheel in vendor/, against core's fixtures.
-  check(out.includes("Tritium bred per source neutron: 1.0412e+00 +/- 1.1e-02"), "tokamak tritium production", out);
-  check((await app(() => window.yamcOnline.plots)) === 2, "tokamak drew the tally and the geometry");
-  let fetched = await app(() => window.yamcOnline.fetched);
-  const names = fetched.map((f) => f.name).sort().join(",");
-  check(names === "Fe56,Li6", "tokamak fetched Fe56 and Li6", names);
-
-  // -- The Li-6 sphere, on a fresh Python ------------------------------------
-  // A new Python holds no data, so what the Li-6 sphere fetches is its own.
-  await page.goto(`${base}?data=/fixtures/&fresh`);
-  await waitReady();
-  await app(() => {
-    const select = document.getElementById("example");
-    select.value = [...select.options].find((o) => o.text === "Li-6 sphere").value;
-    select.dispatchEvent(new Event("change"));
-  });
-  await page.click("#run");
-  await page.waitForFunction(() => window.yamcOnline.state === "ready" && window.yamcOnline.plots > 0, null, { timeout: RUN_TIMEOUT });
-  out = await output();
   // The native wheel gives this to the digit: the same Rust, the same seed.
   check(out.includes("Tritium production: 3.3274e-02 +/- 8.3e-04 per source neutron"), "Li-6 tritium production matches native", out);
   check((await app(() => window.yamcOnline.plots)) === 2, "Li-6 drew the tally and the geometry");
@@ -120,7 +104,7 @@ try {
   const progressLines = out.split("\n").filter((l) => l.startsWith("Progress:")).length;
   check(progressLines === 1, "progress lines collapse into one", `${progressLines} lines`);
 
-  fetched = await app(() => window.yamcOnline.fetched);
+  let fetched = await app(() => window.yamcOnline.fetched);
   check(fetched.length === 1 && fetched[0].name === "Li6", "fetched Li6 and nothing else", JSON.stringify(fetched));
   const li6Bytes = fetched[0].bytes;
 
@@ -152,6 +136,26 @@ try {
   out = await runCode(examples["Mesh tally"]);
   check(out.includes("3600 mesh voxels, peak flux 3.876e-01"), "mesh tally matches native", out);
   check((await app(() => window.yamcOnline.plots)) === 1, "mesh tally drew its map");
+
+  // -- Photons ---------------------------------------------------------------
+  // Values taken from the page with the wheel in vendor/, against the fixtures.
+  out = await runCode(examples["Gamma shielding"]);
+  check(out.includes("      3.0    1.1139e+01 +/- 6.6e-02      4.9633e+00     2.24"), "gamma shield: flux in the first layer", out);
+  check(out.includes("     57.0    2.1110e+00 +/- 4.0e-02      1.6434e-01    12.85"), "gamma shield: flux in the last layer");
+  check((await app(() => window.yamcOnline.plots)) === 2, "gamma shield drew the tally and the geometry");
+  fetched = await app(() => window.yamcOnline.fetched);
+  const photonData = fetched.filter((f) => f.kind === "photon").map((f) => f.name).sort().join(",");
+  check(photonData === "H,O", "gamma shield fetched photon data for H and O", photonData);
+
+  out = await runCode(examples["Neutrons and photons"]);
+  check(out.includes("Photon heating:  3.077 MeV per source neutron"), "coupled: photon heating", out);
+  check(out.includes("Captures on H1: 0.7613 per source neutron"), "coupled: hydrogen captures");
+  check((await app(() => window.yamcOnline.plots)) === 1, "coupled drew the photon flux map");
+
+  out = await runCode(examples["Weight windows"]);
+  check(out.includes("      295    0.000e+00 +/-   0%    9.477e-06 +/-  41%"), "weight windows: only the windows reach the back", out);
+  check(out.includes("Layers with a score: analog 27 of 30, weight windows 30 of 30"), "weight windows: layers reached");
+  check((await app(() => window.yamcOnline.plots)) === 2, "weight windows drew both flux maps");
 
   // -- A rich line anywhere in the script is drawn ---------------------------
   // `model.plot()` above `show(result)` is drawn where it stands, before the
@@ -255,6 +259,11 @@ try {
     await live.waitForFunction(() => window.yamcOnline.state === "ready" && window.yamcOnline.plots > 0, null, { timeout: RUN_TIMEOUT });
     const liveOut = await live.textContent("#output");
     check(liveOut.includes("Tritium production: 3.3274e-02"), "live: the published data gives the same answer", liveOut);
+    // And the published photon data, through the gamma shield.
+    await live.evaluate((c) => { window.yamcOnline.setCode(c); window.yamcOnline.run(); }, examples["Gamma shielding"]);
+    await live.waitForFunction(() => window.yamcOnline.state === "ready" && window.yamcOnline.plots > 0, null, { timeout: RUN_TIMEOUT });
+    const livePhoton = await live.textContent("#output");
+    check(livePhoton.includes("      3.0    1.1139e+01 +/- 6.6e-02"), "live: the published photon data gives the same answer", livePhoton);
     await live.close();
   }
 

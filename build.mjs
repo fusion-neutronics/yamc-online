@@ -15,7 +15,9 @@ const EXAMPLES = new URL("./examples/", import.meta.url);
 const DIST = new URL("./dist/", import.meta.url);
 
 // The order of the examples menu. The first is what a new visitor sees.
-const EXAMPLE_ORDER = ["simple_tokamak", "li6_sphere", "water_shield", "mesh_tally", "pbli_blanket"];
+const EXAMPLE_ORDER = [
+  "li6_sphere", "water_shield", "mesh_tally", "gamma_shield", "neutrons_and_photons", "weight_windows", "tokamak",
+];
 
 const mb = (n) => `${(n / 1048576).toFixed(2)} MB`;
 const text = async (url) => (await readFile(url, "utf8")).trim();

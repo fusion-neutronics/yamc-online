@@ -6,19 +6,29 @@
 // http://localhost:8000/?data=/fixtures/ to read core's test fixtures instead
 // (offline, and what verify.mjs does). The fixtures are core's
 // crates/yamc/tests, filled by `python3 scripts/fetch_test_fixtures.py` in core;
-// set YAMC_FIXTURES to point elsewhere. They are endf-b8.1 only.
+// set YAMC_FIXTURES to point elsewhere. Anything not there is looked for in
+// .fixtures/, which `node scripts/fetch-fixtures.mjs` fills. They are
+// endf-b8.1 only.
 //
 // The page is served cross-origin isolated, as GitHub Pages serves it once
 // coi-serviceworker has reloaded it, so Stop can interrupt Python.
 // `--no-isolation` serves it without, to check the restart fallback.
 
 import { createServer } from "node:http";
-import { createReadStream, statSync } from "node:fs";
+import { createReadStream, existsSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DIST = fileURLToPath(new URL("./dist/", import.meta.url));
 export const FIXTURES = resolve(process.env.YAMC_FIXTURES || fileURLToPath(new URL("../core/crates/yamc/tests/", import.meta.url)));
+// What scripts/fetch-fixtures.mjs downloads, read after FIXTURES: core's
+// fixtures carry no photon data for H or O.
+export const FETCHED_FIXTURES = fileURLToPath(new URL("./.fixtures/", import.meta.url));
+
+/// The fixture directory holding `<Name>.arrow`, or the first if none does.
+export function fixtureDir(name) {
+  return [FIXTURES, FETCHED_FIXTURES].find((d) => existsSync(join(d, name))) || FIXTURES;
+}
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -27,11 +37,13 @@ const TYPES = {
   ".whl": "application/zip",
 };
 
-/// Map `/fixtures/endf-b8.1/neutron/Li6.arrow/reactions.arrow` onto the
-/// fixture tree, or null for anything the fixtures do not carry.
+/// Map `/fixtures/endf-b8.1/neutron/Li6.arrow/reactions.arrow` (or
+/// `photon/Fe.arrow/element.arrow`) onto the fixture tree, or null for
+/// anything the fixtures do not carry. Core keeps neutron nuclides and photon
+/// elements side by side in one directory; their names never clash.
 function fixturePath(path) {
-  const m = path.match(/^\/fixtures\/endf-b8\.1\/neutron\/([A-Za-z0-9_]+\.arrow)\/([a-z_]+\.(?:arrow|json))$/);
-  return m ? join(FIXTURES, m[1], m[2]) : null;
+  const m = path.match(/^\/fixtures\/endf-b8\.1\/(?:neutron|photon)\/([A-Za-z0-9_]+\.arrow)\/([a-z_]+\.(?:arrow|json))$/);
+  return m ? join(fixtureDir(m[1]), m[1], m[2]) : null;
 }
 
 function staticPath(path) {

@@ -30,8 +30,9 @@ The page needs serving over HTTP; `file://` cannot start a module worker.
 ```bash
 npm ci
 node build.mjs
-node verify.mjs           # against core's fixtures, offline except for Pyodide
-node verify.mjs --live    # plus one run against yamc-data.xsplot.com
+node scripts/fetch-fixtures.mjs   # once: the H and O photon data core's fixtures lack
+node verify.mjs           # against the fixtures, offline except for Pyodide
+node verify.mjs --live    # plus runs against yamc-data.xsplot.com
 ```
 
 It runs the examples and checks the printed tally values against the native
@@ -39,7 +40,9 @@ wheel's to the printed digit, the plot frames and the geometry viewer, that a
 rerun fetches nothing, tracebacks, the mesh-geometry error, a Rust panic, Stop
 (both the interrupt and the restart), share links, and that nothing but Pyodide
 is fetched from another origin. CI runs the same against the published Li6, H1
-and O16 objects, fetched by `scripts/fetch-fixtures.mjs`.
+and O16 neutron data and H and O photon data, fetched by
+`scripts/fetch-fixtures.mjs`. The tokamak is listed but not run: its lead is
+too much data for a check.
 
 ## How it works
 
