@@ -7,8 +7,8 @@
 // (offline, and what verify.mjs does). The fixtures are core's
 // crates/yamc/tests, filled by `python3 scripts/fetch_test_fixtures.py` in core;
 // set YAMC_FIXTURES to point elsewhere. Anything not there is looked for in
-// .fixtures/, which `node scripts/fetch-fixtures.mjs` fills. They are
-// endf-b8.1 only.
+// .fixtures/, which `node scripts/fetch-fixtures.mjs` fills (with the
+// transmutation chain too). They are endf-b8.1 only.
 //
 // The page is served cross-origin isolated, as GitHub Pages serves it once
 // coi-serviceworker has reloaded it, so Stop can interrupt Python.
@@ -25,7 +25,8 @@ export const FIXTURES = resolve(process.env.YAMC_FIXTURES || fileURLToPath(new U
 // fixtures carry no photon data for H or O.
 export const FETCHED_FIXTURES = fileURLToPath(new URL("./.fixtures/", import.meta.url));
 
-/// The fixture directory holding `<Name>.arrow`, or the first if none does.
+/// The fixture directory holding `<Name>.arrow` (or `transmutation/<subsection>.arrow`),
+/// or the first if none does.
 export function fixtureDir(name) {
   return [FIXTURES, FETCHED_FIXTURES].find((d) => existsSync(join(d, name))) || FIXTURES;
 }
@@ -38,12 +39,16 @@ const TYPES = {
 };
 
 /// Map `/fixtures/endf-b8.1/neutron/Li6.arrow/reactions.arrow` (or
-/// `photon/Fe.arrow/element.arrow`) onto the fixture tree, or null for
-/// anything the fixtures do not carry. Core keeps neutron nuclides and photon
-/// elements side by side in one directory; their names never clash.
+/// `photon/Fe.arrow/element.arrow`, or `transmutation/decay.arrow/nuclides.arrow`)
+/// onto the fixture tree, or null for anything the fixtures do not carry. Core
+/// keeps neutron nuclides and photon elements side by side in one directory;
+/// their names never clash. The transmutation chain's subsections sit under
+/// `transmutation/`.
 function fixturePath(path) {
-  const m = path.match(/^\/fixtures\/endf-b8\.1\/(?:neutron|photon)\/([A-Za-z0-9_]+\.arrow)\/([a-z_]+\.(?:arrow|json))$/);
-  return m ? join(fixtureDir(m[1]), m[1], m[2]) : null;
+  const m = path.match(/^\/fixtures\/endf-b8\.1\/(neutron|photon|transmutation)\/([A-Za-z0-9_]+\.arrow)\/([a-z_]+\.(?:arrow|json))$/);
+  if (!m) return null;
+  const name = m[1] === "transmutation" ? join("transmutation", m[2]) : m[2];
+  return join(fixtureDir(name), name, m[3]);
 }
 
 function staticPath(path) {

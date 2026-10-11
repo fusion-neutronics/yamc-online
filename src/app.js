@@ -83,13 +83,26 @@ const editor = new EditorView({
       EditorView.updateListener.of((update) => {
         if (!update.docChanged) return;
         clearTimeout(saveTimer);
-        saveTimer = setTimeout(() => localStorage.setItem(DRAFT_KEY, code()), 400);
+        saveTimer = setTimeout(saveDraft, 400);
       }),
     ],
   }),
 });
 
 const code = () => editor.state.doc.toString();
+
+/// Whether `text` is one of the examples as shipped, or nothing at all.
+const unedited = (text) => !text.trim() || EXAMPLES.some((e) => e.code === text);
+
+/// Keep the editor's code for the next visit, but only if it is the user's own:
+/// a copy of an example would go stale when the example is updated, and hide
+/// the new one.
+function saveDraft() {
+  const text = code();
+  if (unedited(text)) localStorage.removeItem(DRAFT_KEY);
+  else localStorage.setItem(DRAFT_KEY, text);
+}
+
 function setCode(text) {
   editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: text } });
 }
@@ -100,8 +113,7 @@ for (const [i, ex] of EXAMPLES.entries()) {
 els.example.addEventListener("change", () => {
   const ex = EXAMPLES[Number(els.example.value)];
   const current = code();
-  const untouched = !current.trim() || EXAMPLES.some((e) => e.code === current);
-  if (untouched || confirm("Replace the code in the editor with this example?")) {
+  if (unedited(current) || confirm("Replace the code in the editor with this example?")) {
     setCode(ex.code);
   } else {
     els.example.value = String(EXAMPLES.findIndex((e) => e.code === current));
@@ -492,7 +504,10 @@ async function initialCode() {
       appendOutput("The link's code could not be read; showing the default example.", "stderr");
     }
   }
-  return localStorage.getItem(DRAFT_KEY) || EXAMPLES[0].code;
+  // A draft identical to an example dates from before saveDraft left those
+  // out. It is not the user's work, so the menu's first example opens instead.
+  const draft = localStorage.getItem(DRAFT_KEY);
+  return draft && !unedited(draft) ? draft : EXAMPLES[0].code;
 }
 
 setCode(await initialCode());
