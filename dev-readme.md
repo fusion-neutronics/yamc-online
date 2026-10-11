@@ -6,6 +6,7 @@
 | --- | --- |
 | `src/index.html`, `src/app.js` | The page: editor, tabs, worker lifecycle. |
 | `src/worker.js` | Pyodide, the yamc wheel, the nuclear-data fetcher, running scripts. |
+| `src/fetcher.js` | The worker's helper that fetches a batch of nuclear-data requests concurrently. |
 | `examples/*.py` | The examples menu. Each opens with `# Title: description`. |
 | `vendor/` | The yamc wheel, `CORE_COMMIT`, `PYODIDE_VERSION`, the CodeMirror bundle, coi-serviceworker. Committed. |
 | `build.mjs` | Copies `src/` and `vendor/` into `dist/` and writes `dist/config.js`. |
@@ -52,18 +53,27 @@ wasm, so in the worker it blocks nothing the user can see.
 
 **Nuclear data.** The wheel's downloader is the same Rust as native yamc,
 deciding what to fetch per nuclide, but an Emscripten build has no sockets, so
-it calls back into the page for each GET (`yamc._core._set_data_fetcher`). The
-worker answers with a synchronous `XMLHttpRequest`, which browsers still allow
-in a worker. Files land in Emscripten's in-memory filesystem under
-`~/.cache/yamc`, so reruns read them instead of fetching again; **Clear held
-data** in the Data tab frees them.
+it hands its GETs to the page (`yamc._core._set_data_fetcher`), as a list of
+`(url, range)` requests answered with one `(status, body)` each. Files land in
+Emscripten's in-memory filesystem under `~/.cache/yamc`, so reruns read them
+instead of fetching again; **Clear held data** in the Data tab frees them.
 
-Transport currently fetches each nuclide's `reactions.arrow` and `energy.arrow`
-whole, every published temperature, even though it only loads the material's
-temperature. For heavy nuclides that is most of the download (PbLi: 312 MB of
-the 447 MB for its 22 nuclides is reactions at six temperatures). Fetching only
-the needed temperature's byte ranges is a change in core's downloader; the
-activation path already ranges by MT from the same `version.json` index.
+The Python call is synchronous, so the worker cannot await anything during a
+run. Before a load of several nuclides the downloader plans every request it
+will make and sends them in two batches per 32 nuclides: every `version.json`
+and whole section first, then the byte ranges those `version.json` indexes
+name. A batch goes to `src/fetcher.js`, a helper worker that has up to 32
+requests in flight with ordinary `fetch()` (the origin speaks HTTP/2, so they
+share a connection) and writes each body into a growable `SharedArrayBuffer`,
+while the Python worker sleeps in `Atomics.wait` until all are answered. The
+helper reports each request to the page on a `MessageChannel`, since the worker
+cannot pass anything on while it sleeps. A single request, and every request
+on a page that is not cross-origin isolated, is a synchronous
+`XMLHttpRequest` from the worker, as before.
+
+The downloader prints `Downloaded 4 of 9 nuclides` as it goes. The page keeps
+one such line in the Output tab, as it does for transport's `Progress:` lines,
+and shows it in the status bar.
 
 **Stop.** With cross-origin isolation the page shares an interrupt buffer with
 Pyodide, and Stop raises `KeyboardInterrupt` in the script. Transport is in Rust

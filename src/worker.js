@@ -11,7 +11,8 @@
 // `{ type: "clearData" }`. Worker to page: `status`, `ready`, `stdout`,
 // `stderr`, `plot`, `fetch`, `done`, `cleared` and `fatal` messages. stdout,
 // plots and fetches are posted while a run is still going, so the page shows
-// them live rather than at the end.
+// them live rather than at the end. The `fetch` messages of a batch come from
+// the helper in fetcher.js instead, on the port the page hands over in `init`.
 
 // The origin the wheel has compiled in. Every nuclear-data URL starts with it.
 const PUBLISHED_ORIGIN = "https://yamc-data.xsplot.com/";
@@ -23,38 +24,77 @@ let dataOrigin = PUBLISHED_ORIGIN;
 
 const post = (msg) => self.postMessage(msg);
 
-/// One blocking GET, as the wheel's downloader asks for it.
+// The helper worker that fetches a batch of requests concurrently (see
+// fetcher.js), and whether this worker can block on it: Atomics.wait on
+// shared memory needs the page to be cross-origin isolated.
+let helper = null;
+const canBatch = self.crossOriginIsolated && typeof SharedArrayBuffer === "function";
+// The most one batch's bodies may take, all told. A body that does not fit is
+// fetched again on its own. Reserved, not allocated: the buffer grows as the
+// bodies arrive.
+const BATCH_BYTES = 1 << 30;
+
+const dataUrl = (url) => (url.startsWith(PUBLISHED_ORIGIN) ? dataOrigin + url.slice(PUBLISHED_ORIGIN.length) : url);
+
+/// One blocking GET, as a synchronous XMLHttpRequest.
 ///
-/// `offset` and `length` are both null for a whole object, otherwise the byte
-/// range to request. Answers `[status, body]`. A synchronous XMLHttpRequest is
-/// what makes this possible at all: the Rust downloader is blocking, and a
-/// worker is the one place a browser still allows a synchronous request with an
-/// ArrayBuffer response.
-///
-/// A network failure (offline, or a CORS refusal) throws rather than inventing
-/// a status. The downloader treats a thrown fetch as a failed attempt and
-/// retries, then reports the URL, which is the useful thing to see.
+/// `range` is the `Range` header value to send, or null for the whole object.
+/// Answers `[status, body]`. A synchronous XMLHttpRequest is what makes this
+/// possible at all: the Rust downloader is blocking, and a worker is the one
+/// place a browser still allows a synchronous request with an ArrayBuffer
+/// response. A network failure (offline, or a CORS refusal) is status 0,
+/// which the downloader retries and then reports with the URL.
 function fetchSync(url, range) {
-  const target = url.startsWith(PUBLISHED_ORIGIN) ? dataOrigin + url.slice(PUBLISHED_ORIGIN.length) : url;
   const xhr = new XMLHttpRequest();
-  xhr.open("GET", target, false);
+  xhr.open("GET", dataUrl(url), false);
   xhr.responseType = "arraybuffer";
   if (range != null) xhr.setRequestHeader("Range", range);
   const started = performance.now();
+  let status = 0;
   try {
     xhr.send();
-  } catch (e) {
-    post({ type: "fetch", url, range, status: 0, bytes: 0, ms: performance.now() - started });
-    throw new Error(`could not fetch ${target}: ${e.message || e}`);
+    status = xhr.status;
+  } catch {
+    status = 0;
   }
-  const ok = xhr.status >= 200 && xhr.status < 300;
   // Only a success carries a body worth handing over: an error page is not
   // nuclear data, and the downloader only reads the status of a 404.
+  const ok = status >= 200 && status < 300;
   const body = ok ? new Uint8Array(xhr.response) : new Uint8Array(0);
-  post({ type: "fetch", url, range, status: xhr.status, bytes: body.length, ms: performance.now() - started });
-  return [xhr.status, body];
+  post({ type: "fetch", url, range, status, bytes: body.length, ms: performance.now() - started });
+  return [status, body];
 }
-self.yamcFetch = fetchSync;
+
+/// Every GET of a batch, concurrently, blocking until all are answered.
+///
+/// The helper worker fetches them with async fetch() and writes each body into
+/// a growable SharedArrayBuffer, and this worker sleeps in Atomics.wait until
+/// the count of answers reaches the batch size. Answers `[status, body]` per
+/// request, in order.
+function fetchBatch(requests) {
+  const n = requests.length;
+  const ctl = new Int32Array(new SharedArrayBuffer(4 * (1 + 3 * n)));
+  const arena = new SharedArrayBuffer(0, { maxByteLength: BATCH_BYTES });
+  helper.postMessage({ requests, ctl, arena, dataOrigin });
+  for (let done = Atomics.load(ctl, 0); done < n; done = Atomics.load(ctl, 0)) {
+    Atomics.wait(ctl, 0, done);
+  }
+  return requests.map((_, i) => {
+    const [status, offset, length] = [ctl[1 + 3 * i], ctl[2 + 3 * i], ctl[3 + 3 * i]];
+    return [status, new Uint8Array(arena, offset, length)];
+  });
+}
+
+/// The wheel's data fetcher: a list of `[url, range]` requests in, one
+/// `[status, body]` per request out. A batch goes to the helper; a single
+/// request, or any request on a page that is not cross-origin isolated, is a
+/// synchronous XMLHttpRequest, which costs no shared memory and no hop.
+function fetchMany(pyRequests) {
+  const requests = pyRequests.toJs().map(([url, range]) => [url, range ?? null]);
+  if (requests.length > 1 && canBatch && helper) return fetchBatch(requests);
+  return requests.map(([url, range]) => fetchSync(url, range));
+}
+self.yamcFetch = fetchMany;
 self.yamcShow = (html, title) => post({ type: "plot", html, title });
 
 // Installed once at boot. `show` is in builtins so a user script and anything
@@ -67,9 +107,8 @@ import yamc
 from yamc import _core
 
 
-def _fetch(url, range_header):
-    status, body = js.yamcFetch(url, range_header)
-    return int(status), body.to_bytes()
+def _fetch(requests):
+    return [(int(status), body.to_bytes()) for status, body in js.yamcFetch(requests)]
 
 
 _core._set_data_fetcher(_fetch)
@@ -209,8 +248,14 @@ function memory() {
 }
 
 const handlers = {
-  async init({ pyodideBase, wheelUrl, data, interruptBuffer }) {
+  async init({ pyodideBase, wheelUrl, data, interruptBuffer, fetchPort }) {
     if (data) dataOrigin = data.endsWith("/") ? data : `${data}/`;
+    if (canBatch) {
+      helper = new Worker(new URL("fetcher.js", import.meta.url));
+      // The helper reports each request to the page directly: this worker is
+      // asleep in Atomics.wait while it works, and could not pass them on.
+      helper.postMessage({ port: fetchPort }, [fetchPort]);
+    }
     // The wheel downloads while Pyodide does, rather than after it: the two
     // are the bulk of the start-up time and neither needs the other.
     const wheel = fetch(wheelUrl).then((r) => {

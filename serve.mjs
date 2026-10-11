@@ -15,7 +15,7 @@
 // `--no-isolation` serves it without, to check the restart fallback.
 
 import { createServer } from "node:http";
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -51,7 +51,8 @@ function staticPath(path) {
   return file.startsWith(DIST) ? file : null;
 }
 
-/// Serve one file, honouring a single `bytes=a-b` Range as the data origin does.
+/// Serve one file, honouring a `Range` header as the data origin does: one
+/// range is a plain 206, several are a `multipart/byteranges` 206.
 function sendFile(req, res, file, headers) {
   let size;
   try {
@@ -63,12 +64,24 @@ function sendFile(req, res, file, headers) {
     return;
   }
   const type = TYPES[extname(file)] || "application/octet-stream";
-  const range = req.headers.range && req.headers.range.match(/^bytes=(\d+)-(\d+)$/);
-  if (range) {
-    const start = Number(range[1]);
-    const end = Math.min(Number(range[2]), size - 1);
+  const spec = req.headers.range && req.headers.range.match(/^bytes=(\d+-\d+(?:,\d+-\d+)*)$/);
+  const ranges = spec
+    ? spec[1].split(",").map((r) => r.split("-").map(Number)).map(([a, b]) => [a, Math.min(b, size - 1)])
+    : [];
+  if (ranges.length === 1) {
+    const [start, end] = ranges[0];
     res.writeHead(206, { ...headers, "Content-Type": type, "Content-Length": end - start + 1, "Content-Range": `bytes ${start}-${end}/${size}` });
     createReadStream(file, { start, end }).pipe(res);
+  } else if (ranges.length > 1) {
+    const body = readFileSync(file);
+    const boundary = "yamc-online-fixtures";
+    const parts = ranges.map(([a, b]) => Buffer.concat([
+      Buffer.from(`\r\n--${boundary}\r\nContent-Type: ${type}\r\nContent-Range: bytes ${a}-${b}/${size}\r\n\r\n`),
+      body.subarray(a, b + 1),
+    ]));
+    const multipart = Buffer.concat([...parts, Buffer.from(`\r\n--${boundary}--\r\n`)]);
+    res.writeHead(206, { ...headers, "Content-Type": `multipart/byteranges; boundary=${boundary}`, "Content-Length": multipart.length });
+    res.end(multipart);
   } else {
     res.writeHead(200, { ...headers, "Content-Type": type, "Content-Length": size });
     createReadStream(file).pipe(res);
