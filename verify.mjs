@@ -275,11 +275,23 @@ try {
     "no cross_section_data is an ordinary error naming the setting", out);
 
   // -- A Rust panic is a Python exception ----------------------------------
-  // A zero direction vector panics in the Rust constructor rather than
-  // raising ValueError. pyo3 turns the panic into PanicException, and the
-  // interpreter carries on. If core comes to raise ValueError here, this
-  // needs another input that panics.
-  out = await runCode("import yamc\nyamc.sources.Monodirectional((0.0, 0.0, 0.0))\n");
+  // The Li-6 sphere with its source outside the geometry: every history is
+  // lost, and transport stops with a Rust panic ("Maximum lost particles
+  // exceeded"). pyo3 turns the panic into PanicException, and the
+  // interpreter carries on. Until core#396 a zero direction vector was the
+  // trigger; it raises ValueError since. If core comes to raise an ordinary
+  // exception here too, this needs another input that panics.
+  //
+  // 100 histories, not the example's 10 000. The first panic comes once 11
+  // are lost either way, but more follow before the run stops, each with
+  // its lost-particle diagnostics: at 10 000 that is 145 panics and over a
+  // minute here, at 100 it is 7 and under a second.
+  const lost = examples["Li-6 sphere"]
+    .replace("position=(0.0, 0.0, 0.0)", "position=(100.0, 0.0, 0.0)")
+    .replace("total_particles=10_000", "total_particles=100");
+  check(lost.includes("position=(100.0, 0.0, 0.0)") && lost.includes("total_particles=100,"),
+    "the script moves the source out of the sphere and runs 100 histories");
+  out = await runCode(lost);
   check(out.includes("PanicException") && !out.includes("Restarting Python"), "a Rust panic is a Python exception, not a crash", out);
   out = await runCode(examples["Li-6 sphere"]);
   check(out.includes("Tritium production: 3.3274e-02"), "Python runs the example again after a panic");
