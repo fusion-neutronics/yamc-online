@@ -2,7 +2,7 @@
 # transport's own reaction rates driving the transmutation. The transport runs
 # once, its rates are scaled by the source rate through a year of operation,
 # and the activity is followed as the sphere cools. Lithium hydride keeps the
-# transmutation chain among H, He and Li: about 14 MB of nuclear data.
+# transmutation chain among H, He and Li: about 16 MB of nuclear data.
 import math
 
 import yamc

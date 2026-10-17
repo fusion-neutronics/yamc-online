@@ -1,5 +1,5 @@
 # Mesh tally: the neutron flux on a 2D grid through a water sphere with a
-# Li-6 core, drawn over the geometry. Li6, H1 and O16: about 8 MB of data.
+# Li-6 core, drawn over the geometry. Li6, H1 and O16: about 4.1 MB of data.
 import yamc
 
 yamc.cross_section_data = "endf-b8.1"

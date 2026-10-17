@@ -1,6 +1,6 @@
 # Shielding slab: a 14 MeV beam onto 60 cm of water, with the neutron flux
 # scored in ten 6 cm layers to show the attenuation. Water is H1 and O16,
-# about 7 MB of nuclear data.
+# about 3.6 MB of nuclear data.
 import yamc
 
 yamc.cross_section_data = "endf-b8.1"

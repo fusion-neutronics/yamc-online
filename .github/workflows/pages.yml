@@ -54,6 +54,16 @@ jobs:
           node scripts/fetch-fixtures.mjs .fixtures
           YAMC_FIXTURES=.fixtures node verify.mjs
 
+      - name: The examples must quote what they download
+        # Each example's opening comment says how much nuclear data it
+        # fetches. Written for an earlier data layout, the figures went on
+        # saying 7 to 8 MB for examples that fetch about 4 MB, and 145 MB for
+        # a tokamak that fetches 44 MB, because nothing compared them with a
+        # run. This runs each example on a fresh page against the same
+        # fixtures and fails if a figure is more than 10% out. The tokamak is
+        # not in the fixtures; `--live` checks it locally.
+        run: YAMC_FIXTURES=.fixtures node scripts/check-download-sizes.mjs
+
       - uses: actions/upload-artifact@v7
         if: always()
         with:

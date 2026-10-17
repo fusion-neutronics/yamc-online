@@ -2,7 +2,7 @@
 # An analog run loses every photon long before the back; weight windows split
 # photons as they go deeper and roulette them on the way back, so the same
 # number of source photons resolves the flux right through. H1, O16 and H and
-# O photon data: about 8 MB.
+# O photon data: about 4.3 MB.
 import yamc
 
 yamc.cross_section_data = "endf-b8.1"

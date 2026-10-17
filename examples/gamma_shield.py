@@ -1,7 +1,7 @@
 # Gamma shielding: a pencil beam of Co-60 gammas (1.17 and 1.33 MeV) onto
 # 60 cm of water, with the photon flux scored in ten 6 cm layers and set
 # against the narrow-beam answer, the photons that never scatter. H1, O16 and
-# H and O photon data: about 8 MB.
+# H and O photon data: about 4.3 MB.
 import math
 
 import yamc

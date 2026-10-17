@@ -2,7 +2,7 @@
 # they produce transported too. Hydrogen captures the slowed-down neutrons and
 # emits a 2.2 MeV gamma each time, so part of the heating is carried by
 # photons. Scores the heating per particle and maps the photon flux. H1, O16
-# and H and O photon data: about 8 MB.
+# and H and O photon data: about 4.3 MB.
 import yamc
 
 yamc.cross_section_data = "endf-b8.1"

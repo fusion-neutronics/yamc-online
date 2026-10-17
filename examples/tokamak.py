@@ -3,7 +3,7 @@
 # plasma, scoring the tritium breeding ratio (TBR) and the blanket heating.
 #
 # Lead is heavy on nuclear data: Fe56, the four Pb isotopes and Li6/Li7 are
-# about 145 MB to download, so the first run takes a while (half a minute or
+# about 44 MB to download, so the first run takes a while (half a minute or
 # more). Reruns reuse it.
 import math
 

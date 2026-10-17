@@ -32,7 +32,7 @@ them.
 The examples menu opens on a Li-6 sphere, and also has a water shielding slab,
 a mesh tally, a gamma shield (a photon source), coupled neutron and photon
 transport, weight windows for deep penetration, a tokamak with a PbLi
-breeder blanket (about 145 MB of nuclear data on its first run), lithium
+breeder blanket (about 44 MB of nuclear data on its first run), lithium
 activated by a given flux spectrum, and a lithium hydride sphere activated by
 its own transport. They are also in [examples/](examples/) as plain scripts.
 
@@ -45,14 +45,17 @@ its own transport. They are also in [examples/](examples/) as plain scripts.
   error; it needs `pip install yamc`.
 - **About 2 GB of memory for Python.** Roughly 100 nuclides of typical fusion
   materials fit.
-- **Nuclear data is downloaded per nuclide.** Light nuclides are a megabyte or
-  two; heavy ones such as lead, iron or tungsten are 15 to 50 MB each. The Data
-  tab shows what was fetched.
-- **Transmutation fetches cross sections for every nuclide the chain can
-  reach.** The chain data itself is about 13 MB. From beryllium upwards the
-  reachable chain is the same 461 nuclides whatever the material, about 650 MB
-  (aluminium, say). Hydrogen, helium and lithium reach only each other, which
-  is why the transmutation examples use them.
+- **Nuclear data is downloaded per nuclide.** Light nuclides are mostly well
+  under a megabyte, though oxygen-16 is 3.5 MB; heavy ones such as lead,
+  tungsten or iron are 4 to 21 MB each. The first run also fetches the
+  library's index, 0.65 MB, which the sizes quoted in the examples leave out.
+  The Data tab shows what was fetched.
+- **Transmutation fetches the chain data, and cross sections only for the
+  nuclides the irradiation produces.** The chain data is about 14 MB. With the
+  lithium example's spectrum and schedule, beryllium fetches 7 nuclides and
+  about 16 MB in all, aluminium 14 nuclides and about 21 MB, and natural iron
+  25 nuclides and about 57 MB. Lithium's chain stays among hydrogen, helium and
+  lithium, so the two lithium examples fetch little beyond the chain data.
 
 ## Development
 
