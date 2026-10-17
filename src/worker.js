@@ -1,8 +1,9 @@
 // Python and yamc, off the main thread.
 //
 // A module worker, loaded from its own file next to the page: Pyodide refuses
-// to start in a classic one. Pyodide is imported from the CDN, the yamc wheel
-// is fetched from beside the page.
+// to start in a classic one. Pyodide is imported from the CDN, and yamc-core
+// is installed with micropip from its Pyodide wheel on PyPI (or from a local
+// wheel beside the page, for a build made with `--wheel`).
 // Transport is one synchronous call into wasm that returns when it is done, so
 // on the main thread it would freeze the page for the whole run; here it only
 // blocks this thread, and the page stays responsive and can terminate it.
@@ -23,6 +24,49 @@ let pyodide = null;
 let dataOrigin = PUBLISHED_ORIGIN;
 
 const post = (msg) => self.postMessage(msg);
+
+async function getJson(url, missing = null) {
+  const r = await fetch(url);
+  if (r.status === 404 && missing) throw new Error(missing);
+  if (!r.ok) throw new Error(`could not fetch ${url}: HTTP ${r.status}`);
+  return r.json();
+}
+
+const hex = (buffer) => [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+/// The yamc-core wheel to install, as `{ name, bytes }`: the local wheel the
+/// page was built with, or else the PyPI release's wheel for this Pyodide.
+///
+/// Fetched while Pyodide starts, which is why this does not leave it to
+/// micropip: micropip only exists once Pyodide has started, and would then
+/// ask PyPI's index and download the wheel one after the other. PyPI names
+/// each file with its sha256, which the bytes are checked against. The wheel's
+/// platform tag (PEP 783) has to be the one this Pyodide's lock file names, so
+/// a release built for another Pyodide fails here, saying so.
+async function fetchWheel({ pyodideBase, pyodideVersion, yamcCore, wheelUrl }) {
+  let file;
+  if (wheelUrl) {
+    file = { url: wheelUrl, filename: decodeURIComponent(new URL(wheelUrl).pathname.split("/").pop()) };
+  } else {
+    const [lock, release] = await Promise.all([
+      getJson(`${pyodideBase}pyodide-lock.json`),
+      getJson(`https://pypi.org/pypi/yamc-core/${yamcCore}/json`, `yamc-core ${yamcCore} is not on PyPI`),
+    ]);
+    const platform = `pyemscripten_${lock.info.abi_version}_${lock.info.arch}`;
+    file = release.urls.find((f) => f.filename.endsWith(`-${platform}.whl`));
+    if (!file) {
+      throw new Error(`yamc-core ${yamcCore} on PyPI has no wheel for Pyodide ${pyodideVersion} (${platform})`);
+    }
+  }
+  const r = await fetch(file.url);
+  if (!r.ok) throw new Error(`could not fetch ${file.url}: HTTP ${r.status}`);
+  const bytes = await r.arrayBuffer();
+  const expected = file.digests && file.digests.sha256;
+  if (expected && hex(await crypto.subtle.digest("SHA-256", bytes)) !== expected) {
+    throw new Error(`${file.filename} from PyPI does not match its sha256`);
+  }
+  return { name: file.filename, bytes: new Uint8Array(bytes) };
+}
 
 // The helper worker that fetches a batch of requests concurrently (see
 // fetcher.js), and whether this worker can block on it: Atomics.wait on
@@ -138,9 +182,9 @@ builtins.show = show
 # from it. A stand-in that says why reads better than an AttributeError. Only
 # installed for a name the wheel lacks, so a wheel that has it is untouched.
 _MESH_ONLY = [
-    "MeshGeometry", "FaceOutput", "SceneFaceOutput", "cad_mesh_labels", "cad_mesh_to_arrow",
-    "mesh_face", "mesh_faces", "mesh_faces_scene_resolved", "mesh_to_arrow", "mesh_volume_rs",
-    "weld_mesh",
+    "MeshGeometry", "FaceOutput", "SceneFaceOutput", "assemble_face_meshes", "cad_mesh_labels",
+    "cad_mesh_to_arrow", "mesh_face", "mesh_faces", "mesh_faces_scene_resolved", "mesh_to_arrow",
+    "mesh_volume_rs", "solid_contact_samples", "solid_overlaps", "solid_shared_volume", "weld_mesh",
 ]
 
 
@@ -248,7 +292,7 @@ function memory() {
 }
 
 const handlers = {
-  async init({ pyodideBase, wheelUrl, data, interruptBuffer, fetchPort }) {
+  async init({ pyodideBase, pyodideVersion, yamcCore, wheelUrl, data, interruptBuffer, fetchPort }) {
     if (data) dataOrigin = data.endsWith("/") ? data : `${data}/`;
     if (canBatch) {
       helper = new Worker(new URL("fetcher.js", import.meta.url));
@@ -258,21 +302,21 @@ const handlers = {
     }
     // The wheel downloads while Pyodide does, rather than after it: the two
     // are the bulk of the start-up time and neither needs the other.
-    const wheel = fetch(wheelUrl).then((r) => {
-      if (!r.ok) throw new Error(`could not fetch ${wheelUrl}: HTTP ${r.status}`);
-      return r.arrayBuffer();
-    });
+    const wheel = fetchWheel({ pyodideBase, pyodideVersion, yamcCore, wheelUrl });
     wheel.catch(() => {}); // Reported where it is awaited, not as unhandled.
     post({ type: "status", text: "Loading Python" });
     const { loadPyodide } = await import(`${pyodideBase}pyodide.mjs`);
-    pyodide = await loadPyodide({ indexURL: pyodideBase });
+    pyodide = await loadPyodide({ indexURL: pyodideBase, packages: ["micropip"] });
     pyodide.setStdout({ batched: (text) => post({ type: "stdout", text }) });
     pyodide.setStderr({ batched: (text) => post({ type: "stderr", text }) });
     if (interruptBuffer) pyodide.setInterruptBuffer(interruptBuffer);
     post({ type: "status", text: "Installing yamc" });
-    // Unpacked into site-packages from the bytes already fetched; the
-    // extension module is loaded when the prelude imports yamc.
-    pyodide.unpackArchive(await wheel, "wheel");
+    // micropip installs from the bytes already fetched: it checks the wheel's
+    // tags against this Pyodide and puts it in site-packages. yamc-core has no
+    // dependencies, so it asks nothing of the network.
+    const { name, bytes } = await wheel;
+    pyodide.FS.writeFile(`/tmp/${name}`, bytes);
+    await pyodide.pyimport("micropip").install(`emfs:/tmp/${name}`);
     await pyodide.runPythonAsync(PRELUDE);
     post({
       type: "ready",
