@@ -1,6 +1,6 @@
 # Li-6 sphere: 14 MeV neutrons into a sphere of Li-6, scoring tritium production.
-# The smallest model that does something useful: one nuclide (about 1 MB of
-# nuclear data), a second or two to run.
+# The smallest model that does something useful: one nuclide (about half a
+# megabyte of nuclear data), a second or two to run.
 import yamc
 
 # The nuclear data library, fetched on demand from yamc-data.xsplot.com.

@@ -3,7 +3,7 @@
 # collapsed with each nuclide's cross sections, and the inventory is solved
 # through every step. Prints the tritium and helium made and the activity as
 # it cools. Lithium's transmutation chain stays among H, He and Li, so this
-# fetches about 14 MB, most of it the decay data.
+# fetches about 15 MB, most of it the decay data.
 import yamc
 
 yamc.cross_section_data = "endf-b8.1"

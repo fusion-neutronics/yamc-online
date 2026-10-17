@@ -41,6 +41,7 @@ node build.mjs
 node scripts/fetch-fixtures.mjs   # once: what core's fixtures lack (photon data, H3, He3, the chain)
 node verify.mjs           # against the fixtures, offline except for Pyodide and PyPI
 node verify.mjs --live    # plus runs against yamc-data.xsplot.com
+node scripts/check-download-sizes.mjs [--live]   # the sizes the examples quote, against a run
 ```
 
 It runs the examples and checks the printed tally and inventory values against
