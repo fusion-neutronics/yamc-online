@@ -5,11 +5,13 @@
 //
 //   node scripts/fetch-fixtures.mjs [dir]      (default: .fixtures)
 //
-// For CI, which has no core checkout, and locally for the photon data core's
-// fixtures lack (H and O): serve.mjs reads core's fixtures first and
-// .fixtures/ second. These are the published objects, byte for byte, so the
-// two are interchangeable.
+// For CI, which has no core checkout, and locally for what core's fixtures
+// lack (photon data for H and O, H3, He3, the chain): serve.mjs reads core's
+// fixtures first and .fixtures/ second. These are the objects of the current
+// published release, byte for byte, each checked against the release
+// manifest's sha256.
 
+import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,8 +31,7 @@ const SECTIONS = {
     "distributions.arrow", "urr.arrow", "total_nu.arrow", "fission_photon.arrow",
   ],
   photon: ["version.json", "element.arrow", "subshells.arrow", "compton.arrow", "bremsstrahlung.arrow"],
-  // Keyed by subsection; every file a subsection can publish, optional ones
-  // included.
+  // Keyed by subsection.
   decay: ["nuclides.arrow", "decay_modes.arrow", "sources.arrow", "provenance.json"],
   reactions: ["reactions.arrow", "provenance.json"],
   fission_yields: ["fission_yields.arrow", "aliases.arrow", "evaluated_yields.arrow", "provenance.json"],
@@ -41,22 +42,38 @@ const SECTIONS = {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const dir = process.argv[2] || ".fixtures";
   let total = 0;
+  const getJson = async (url) => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
+    return res.json();
+  };
+  // The CDN caches latest.json, and can go on serving a pointer to a release
+  // that has since been deleted. A query string it has not seen is answered
+  // by the origin, as core's scripts/fetch_test_fixtures.py asks. The
+  // release's own files never change, so they are fetched as published.
+  const { release } = await getJson(`${ORIGIN}/latest.json?release-check=${Date.now()}`);
+  const manifest = await getJson(`${ORIGIN}/${release}/manifest.json`);
+  const listed = new Map(manifest.files.map((f) => [f.path, f]));
   const wanted = [
-    ...NEUTRON.map((name) => ["neutron", name, name, SECTIONS.neutron]),
-    ...PHOTON.map((name) => ["photon", name, name, SECTIONS.photon]),
-    ...TRANSMUTATION.map((sub) => ["transmutation", sub, join("transmutation", sub), SECTIONS[sub]]),
+    ...NEUTRON.map((name) => [`neutron/${name}.arrow`, name, SECTIONS.neutron]),
+    ...PHOTON.map((name) => [`photon/${name}.arrow`, name, SECTIONS.photon]),
+    ...TRANSMUTATION.map((sub) => [`transmutation/${sub}.arrow`, join("transmutation", sub), SECTIONS[sub]]),
   ];
-  for (const [kind, name, local, sections] of wanted) {
+  for (const [folder, local, sections] of wanted) {
     const target = join(dir, `${local}.arrow`);
     await mkdir(target, { recursive: true });
     for (const section of sections) {
-      const res = await fetch(`${ORIGIN}/${kind}/${name}.arrow/${section}`);
-      if (res.status === 404) continue; // an optional section this one does not publish
-      if (!res.ok) throw new Error(`${kind}/${name}/${section}: HTTP ${res.status}`);
+      // An optional section this release does not publish is not listed.
+      const entry = listed.get(`${folder}/${section}`);
+      if (!entry) continue;
+      const url = `${ORIGIN}/${release}/${entry.path}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
       const body = Buffer.from(await res.arrayBuffer());
+      if (createHash("sha256").update(body).digest("hex") !== entry.sha256) throw new Error(`${url}: not what the manifest lists`);
       await writeFile(join(target, section), body);
       total += body.length;
     }
   }
-  console.log(`${NEUTRON.join(", ")}, ${PHOTON.join(", ")} photon data and the transmutation chain into ${dir}: ${(total / 1048576).toFixed(1)} MB`);
+  console.log(`${NEUTRON.join(", ")}, ${PHOTON.join(", ")} photon data and the transmutation chain of release ${release} into ${dir}: ${(total / 1048576).toFixed(1)} MB`);
 }

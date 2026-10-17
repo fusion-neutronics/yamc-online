@@ -1,13 +1,20 @@
 // Produce dist/: the page, its worker, and everything they load from beside
-// them. Pyodide is the one thing fetched from elsewhere (the jsDelivr CDN).
+// them. Pyodide comes from the jsDelivr CDN and yamc-core from PyPI, at the
+// versions vendor/PYODIDE_VERSION and vendor/YAMC_CORE_VERSION pin.
 //
-//   node build.mjs
+//   node build.mjs [--wheel path/to/yamc_core-...-pyemscripten_..._wasm32.whl]
 //
-// Nothing here needs npm: CodeMirror and the yamc wheel are committed under
-// vendor/. The examples are read from examples/*.py, so each one is also a
-// script that runs as-is under `pip install yamc`.
+// `--wheel` copies a local Pyodide wheel of yamc-core into dist/ and installs
+// that instead of the PyPI release: for trying an unreleased core, and for
+// checking the page offline. A published page is built without it.
+//
+// Nothing here needs npm: the CodeMirror bundle is committed under vendor/.
+// The examples are read from examples/*.py, so each one is also a script that
+// runs as-is under `pip install yamc`.
 
 import { readFile, writeFile, mkdir, readdir, rm, copyFile } from "node:fs/promises";
+import { basename, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const SRC = new URL("./src/", import.meta.url);
 const VENDOR = new URL("./vendor/", import.meta.url);
@@ -31,12 +38,15 @@ function exampleTitle(name, code) {
 }
 
 async function main() {
-  const vendored = await readdir(VENDOR);
-  const wheels = vendored.filter((f) => f.endsWith(".whl"));
-  if (wheels.length !== 1) throw new Error(`expected one wheel in vendor/, found ${wheels.length}: ${wheels.join(", ")}`);
-  const [wheel] = wheels;
+  const args = process.argv.slice(2);
+  const wheelArg = args.indexOf("--wheel");
+  const localWheel = wheelArg >= 0 ? resolve(args[wheelArg + 1] || "") : null;
+  if (localWheel && !/^yamc_core-.+-pyemscripten_\d+_\d+_wasm32\.whl$/.test(basename(localWheel))) {
+    throw new Error(`--wheel wants a Pyodide wheel of yamc-core (yamc_core-*-pyemscripten_*_wasm32.whl), not ${localWheel}`);
+  }
+  const wheel = localWheel && basename(localWheel);
   const pyodideVersion = await text(new URL("PYODIDE_VERSION", VENDOR));
-  const coreCommit = await text(new URL("CORE_COMMIT", VENDOR));
+  const yamcCoreVersion = await text(new URL("YAMC_CORE_VERSION", VENDOR));
 
   const names = (await readdir(EXAMPLES)).filter((f) => f.endsWith(".py")).map((f) => f.slice(0, -3));
   const unlisted = names.filter((n) => !EXAMPLE_ORDER.includes(n));
@@ -50,7 +60,8 @@ async function main() {
   await rm(DIST, { recursive: true, force: true });
   await mkdir(DIST, { recursive: true });
   for (const f of ["index.html", "app.js", "worker.js", "fetcher.js"]) await copyFile(new URL(f, SRC), new URL(f, DIST));
-  for (const f of ["codemirror.js", "coi-serviceworker.min.js", wheel]) await copyFile(new URL(f, VENDOR), new URL(f, DIST));
+  for (const f of ["codemirror.js", "coi-serviceworker.min.js"]) await copyFile(new URL(f, VENDOR), new URL(f, DIST));
+  if (wheel) await copyFile(pathToFileURL(localWheel), new URL(wheel, DIST));
   // GitHub Pages runs Jekyll otherwise, which would drop nothing here today
   // but has opinions about underscored names.
   await writeFile(new URL(".nojekyll", DIST), "");
@@ -58,16 +69,18 @@ async function main() {
   const config =
     "// Written by build.mjs. Edit vendor/ and examples/, not this file.\n" +
     `export const PYODIDE_VERSION = ${JSON.stringify(pyodideVersion)};\n` +
+    `export const YAMC_CORE_VERSION = ${JSON.stringify(yamcCoreVersion)};\n` +
+    "// A wheel beside the page to install instead of the PyPI release, or null.\n" +
     `export const WHEEL = ${JSON.stringify(wheel)};\n` +
-    `export const CORE_COMMIT = ${JSON.stringify(coreCommit)};\n` +
     `export const EXAMPLES = ${JSON.stringify(examples, null, 2)};\n`;
   await writeFile(new URL("config.js", DIST), config);
 
   const sizes = await Promise.all(
-    ["index.html", "app.js", "worker.js", "config.js", "codemirror.js", wheel].map(async (f) => [f, (await readFile(new URL(f, DIST))).length]),
+    ["index.html", "app.js", "worker.js", "config.js", "codemirror.js", ...(wheel ? [wheel] : [])].map(async (f) => [f, (await readFile(new URL(f, DIST))).length]),
   );
   console.log(sizes.map(([f, n]) => `dist/${f.padEnd(28)} ${mb(n)}`).join("\n"));
-  console.log(`Pyodide ${pyodideVersion} from the CDN, core ${coreCommit.slice(0, 12)}, ${examples.length} examples`);
+  const core = wheel ? `yamc-core from ${wheel} (not PyPI)` : `yamc-core ${yamcCoreVersion} from PyPI`;
+  console.log(`Pyodide ${pyodideVersion} from the CDN, ${core}, ${examples.length} examples`);
 }
 
 main().catch((e) => {
