@@ -260,9 +260,10 @@ try {
   out = await output();
   check(out.includes("Stopped. Python was restarted."), "Stop during transport restarts Python", out.slice(-300));
 
-  // -- A Rust panic is a Python exception ----------------------------------
-  // The loader panics on a material with no nuclear data source. pyo3 turns
-  // the panic into PanicException, and the interpreter carries on.
+  // -- No library is an ordinary error --------------------------------------
+  // With no cross_section_data the load stops with a message naming the
+  // setting, as an exception `except Exception` catches. Before yamc-core
+  // 0.16.0 this was a Rust panic.
   out = await runCode(
     "import yamc\nyamc.cross_section_data = None\n" +
     "m = yamc.Material(composition={'Li6': 1.0}, density=0.46)\n" +
@@ -270,6 +271,15 @@ try {
     "yamc.Model(geometry=yamc.Geometry([c]), tallies=[], source=yamc.NeutronSource(energy=1e6))" +
     ".simulate_transport(total_particles=10)\n",
   );
+  check(out.includes("no neutron cross-section library is configured") && !out.includes("PanicException"),
+    "no cross_section_data is an ordinary error naming the setting", out);
+
+  // -- A Rust panic is a Python exception ----------------------------------
+  // A zero direction vector panics in the Rust constructor rather than
+  // raising ValueError. pyo3 turns the panic into PanicException, and the
+  // interpreter carries on. If core comes to raise ValueError here, this
+  // needs another input that panics.
+  out = await runCode("import yamc\nyamc.sources.Monodirectional((0.0, 0.0, 0.0))\n");
   check(out.includes("PanicException") && !out.includes("Restarting Python"), "a Rust panic is a Python exception, not a crash", out);
   out = await runCode(examples["Li-6 sphere"]);
   check(out.includes("Tritium production: 3.3274e-02"), "Python runs the example again after a panic");

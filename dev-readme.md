@@ -46,13 +46,15 @@ node verify.mjs --live    # plus runs against yamc-data.xsplot.com
 It runs the examples and checks the printed tally and inventory values against
 the native wheel's to the printed digit, the plot frames and the geometry
 viewer, that a rerun fetches nothing, that the lithium transmutation chain
-reaches only H, He and Li, tracebacks, the mesh-geometry error, a Rust panic,
-Stop (both the interrupt and the restart), that only edited code is kept as a
-draft, share links, and that nothing but Pyodide and yamc-core (from PyPI,
-unless the build was given `--wheel`) is fetched from another origin. CI runs the same against the published data `scripts/fetch-fixtures.mjs`
-lists, from the current endf-b8.1 release: Li6, Li7, H1, H2, H3, He3 and O16
-neutron data, H and O photon data, and the transmutation chain. The tokamak is listed but not run: its lead
-is too much data for a check.
+reaches only H, He and Li, tracebacks, the mesh-geometry error, the error for a
+script that sets no library, a Rust panic, Stop (both the interrupt and the
+restart), that only edited code is kept as a draft, share links, and that
+nothing but Pyodide and yamc-core (from PyPI, unless the build was given
+`--wheel`) is fetched from another origin. CI runs the same against the
+published data `scripts/fetch-fixtures.mjs` lists, from the current endf-b8.1
+release: Li6, Li7, H1, H2, H3, He3 and O16 neutron data, H and O photon data,
+and the transmutation chain. The tokamak is listed but not run: its lead is too
+much data for a check.
 
 ## How it works
 
@@ -81,14 +83,15 @@ run. The library's `latest.json` names its current release, whose
 that release's folder and are checked against it. Before a load of several
 nuclides the downloader plans every request it will make and sends them in two
 batches per 32 nuclides: every `version.json` and whole section first, then
-the byte ranges those `version.json` indexes name. A batch goes to `src/fetcher.js`, a helper worker that has up to 32
-requests in flight with ordinary `fetch()` (the origin speaks HTTP/2, so they
-share a connection) and writes each body into a growable `SharedArrayBuffer`,
-while the Python worker sleeps in `Atomics.wait` until all are answered. The
-helper reports each request to the page on a `MessageChannel`, since the worker
-cannot pass anything on while it sleeps. A single request, and every request
-on a page that is not cross-origin isolated, is a synchronous
-`XMLHttpRequest` from the worker, as before.
+the byte ranges those `version.json` indexes name. A batch goes to
+`src/fetcher.js`, a helper worker that has up to 32 requests in flight with
+ordinary `fetch()` (the origin speaks HTTP/2, so they share a connection) and
+writes each body into a growable `SharedArrayBuffer`, while the Python worker
+sleeps in `Atomics.wait` until all are answered. The helper reports each
+request to the page on a `MessageChannel`, since the worker cannot pass
+anything on while it sleeps. A single request, and every request on a page
+that is not cross-origin isolated, is a synchronous `XMLHttpRequest` from the
+worker, as before.
 
 The downloader prints `Downloaded 4 of 9 nuclides` as it goes. The page keeps
 one such line in the Output tab, as it does for transport's `Progress:` lines,

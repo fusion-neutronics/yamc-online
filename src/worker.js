@@ -182,9 +182,9 @@ builtins.show = show
 # from it. A stand-in that says why reads better than an AttributeError. Only
 # installed for a name the wheel lacks, so a wheel that has it is untouched.
 _MESH_ONLY = [
-    "MeshGeometry", "FaceOutput", "SceneFaceOutput", "cad_mesh_labels", "cad_mesh_to_arrow",
-    "mesh_face", "mesh_faces", "mesh_faces_scene_resolved", "mesh_to_arrow", "mesh_volume_rs",
-    "weld_mesh",
+    "MeshGeometry", "FaceOutput", "SceneFaceOutput", "assemble_face_meshes", "cad_mesh_labels",
+    "cad_mesh_to_arrow", "mesh_face", "mesh_faces", "mesh_faces_scene_resolved", "mesh_to_arrow",
+    "mesh_volume_rs", "solid_contact_samples", "solid_overlaps", "solid_shared_volume", "weld_mesh",
 ]
 
 
