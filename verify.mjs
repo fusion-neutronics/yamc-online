@@ -275,11 +275,15 @@ try {
     "no cross_section_data is an ordinary error naming the setting", out);
 
   // -- A Rust panic is a Python exception ----------------------------------
-  // A zero direction vector panics in the Rust constructor rather than
-  // raising ValueError. pyo3 turns the panic into PanicException, and the
-  // interpreter carries on. If core comes to raise ValueError here, this
-  // needs another input that panics.
-  out = await runCode("import yamc\nyamc.sources.Monodirectional((0.0, 0.0, 0.0))\n");
+  // The Li-6 sphere with its source outside the geometry: every history is
+  // lost, and transport stops with a Rust panic ("Maximum lost particles
+  // exceeded"). pyo3 turns the panic into PanicException, and the
+  // interpreter carries on. Until core#396 a zero direction vector was the
+  // trigger; it raises ValueError since. If core comes to raise an ordinary
+  // exception here too, this needs another input that panics.
+  const lost = examples["Li-6 sphere"].replace("position=(0.0, 0.0, 0.0)", "position=(100.0, 0.0, 0.0)");
+  check(lost !== examples["Li-6 sphere"], "the script with the source outside the sphere differs");
+  out = await runCode(lost);
   check(out.includes("PanicException") && !out.includes("Restarting Python"), "a Rust panic is a Python exception, not a crash", out);
   out = await runCode(examples["Li-6 sphere"]);
   check(out.includes("Tritium production: 3.3274e-02"), "Python runs the example again after a panic");
