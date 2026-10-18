@@ -8,8 +8,6 @@ import yamc
 yamc.cross_section_data = "endf-b8.1"
 
 water = yamc.Material(composition={"H1": 2.0, "O16": 1.0}, density=1.0, temperature=294, name="water")
-# Photon transport reads per-element photon data; this fetches it for H and O.
-water.read_nuclear_data("endf-b8.1")
 
 thickness = 300.0
 slab = yamc.Plane(axis="x", offset=0.0, boundary="vacuum").above & yamc.Plane(axis="x", offset=thickness, boundary="vacuum").below
