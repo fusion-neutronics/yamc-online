@@ -124,7 +124,14 @@ try {
   await page.waitForFunction(() => window.yamcOnline.state === "ready" && window.yamcOnline.plots > 0, null, { timeout: RUN_TIMEOUT });
   let out = await output();
   // The native wheel gives this to the digit: the same Rust, the same seed.
-  check(out.includes("Tritium production: 3.3274e-02 +/- 8.3e-04 per source neutron"), "Li-6 tritium production matches native", out);
+  check(out.includes("Tritium production: 3.2849e-02 +/- 3.8e-04 per source neutron"), "Li-6 tritium production matches native", out);
+  // The transport's verdict on the tally's statistical checks, which the
+  // TallyResult in the Plots tab shows too. Since core#417 the large-score
+  // tail slope is estimated from the 201 largest history scores, not 50: at
+  // 10 000 histories it came out below 3 for each of seeds 1 to 20, and the
+  // example printed FAILED. At 50 000 it is 3.6 to 4.2.
+  const li6Verdict = out.split("\n").find((l) => l.trimStart().startsWith("tritium production:")) ?? "";
+  check(li6Verdict.includes("checks=PASSED"), "Li-6: the tally passes its statistical checks", li6Verdict);
   check((await app(() => window.yamcOnline.plots)) === 2, "Li-6 drew the tally and the geometry");
   check((await page.locator("#plots iframe").count()) === 2, "two sandboxed plot frames");
   check((await page.getAttribute("#plots iframe", "sandbox")) === "allow-scripts", "plot frames are sandboxed");
@@ -252,7 +259,7 @@ try {
 
   // Transport is one call into Rust, which never looks at the interrupt, so
   // Stop falls back to restarting Python once the grace period is up.
-  await app((c) => window.yamcOnline.setCode(c), examples["Li-6 sphere"].replace("10_000", "50_000_000"));
+  await app((c) => window.yamcOnline.setCode(c), examples["Li-6 sphere"].replace("total_particles=50_000", "total_particles=50_000_000"));
   await app(() => window.yamcOnline.run());
   await page.waitForFunction(() => document.getElementById("output").textContent.includes("Progress:"), null, { timeout: RUN_TIMEOUT });
   await page.click("#stop");
@@ -282,19 +289,19 @@ try {
   // trigger; it raises ValueError since. If core comes to raise an ordinary
   // exception here too, this needs another input that panics.
   //
-  // 100 histories, not the example's 10 000. The first panic comes once 11
+  // 100 histories, not the example's 50 000. The first panic comes once 11
   // are lost either way, but more follow before the run stops, each with
-  // its lost-particle diagnostics: at 10 000 that is 145 panics and over a
+  // its lost-particle diagnostics: at 10 000 that was 145 panics and over a
   // minute here, at 100 it is 7 and under a second.
   const lost = examples["Li-6 sphere"]
     .replace("position=(0.0, 0.0, 0.0)", "position=(100.0, 0.0, 0.0)")
-    .replace("total_particles=10_000", "total_particles=100");
+    .replace("total_particles=50_000", "total_particles=100");
   check(lost.includes("position=(100.0, 0.0, 0.0)") && lost.includes("total_particles=100,"),
     "the script moves the source out of the sphere and runs 100 histories");
   out = await runCode(lost);
   check(out.includes("PanicException") && !out.includes("Restarting Python"), "a Rust panic is a Python exception, not a crash", out);
   out = await runCode(examples["Li-6 sphere"]);
-  check(out.includes("Tritium production: 3.3274e-02"), "Python runs the example again after a panic");
+  check(out.includes("Tritium production: 3.2849e-02"), "Python runs the example again after a panic");
 
   // -- Completion list is readable in the dark palette ---------------------
   {
@@ -370,7 +377,7 @@ try {
     await live.evaluate((c) => { window.yamcOnline.setCode(c); window.yamcOnline.run(); }, examples["Li-6 sphere"]);
     await live.waitForFunction(() => window.yamcOnline.state === "ready" && window.yamcOnline.plots > 0, null, { timeout: RUN_TIMEOUT });
     const liveOut = await live.textContent("#output");
-    check(liveOut.includes("Tritium production: 3.3274e-02"), "live: the published data gives the same answer", liveOut);
+    check(liveOut.includes("Tritium production: 3.2849e-02"), "live: the published data gives the same answer", liveOut);
     // And the published photon data, through the gamma shield.
     await live.evaluate((c) => { window.yamcOnline.setCode(c); window.yamcOnline.run(); }, examples["Gamma shielding"]);
     await live.waitForFunction(() => window.yamcOnline.state === "ready" && window.yamcOnline.plots > 0, null, { timeout: RUN_TIMEOUT });
