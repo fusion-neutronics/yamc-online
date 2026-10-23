@@ -18,7 +18,7 @@ source = yamc.NeutronSource(energy=14.06e6, position=(0.0, 0.0, 0.0))
 tritium = yamc.Tally(cells=cell, scores=[105], name="tritium production")
 
 model = yamc.Model(geometry=geometry, tallies=[tritium], source=source)
-results = model.simulate_transport(total_particles=10_000, seed=1)
+results = model.simulate_transport(total_particles=50_000, seed=1)
 
 result = results[tritium]
 print(f"Tritium production: {result.mean[0]:.4e} +/- {result.standard_deviation[0]:.1e} per source neutron")

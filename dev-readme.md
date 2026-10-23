@@ -45,17 +45,18 @@ node scripts/check-download-sizes.mjs [--live]   # the sizes the examples quote,
 ```
 
 It runs the examples and checks the printed tally and inventory values against
-the native wheel's to the printed digit, the plot frames and the geometry
-viewer, that a rerun fetches nothing, that the lithium transmutation chain
-reaches only H, He and Li, tracebacks, the mesh-geometry error, the error for a
-script that sets no library, a Rust panic, Stop (both the interrupt and the
-restart), that only edited code is kept as a draft, share links, and that
-nothing but Pyodide and yamc-core (from PyPI, unless the build was given
-`--wheel`) is fetched from another origin. CI runs the same against the
-published data `scripts/fetch-fixtures.mjs` lists, from the current endf-b8.1
-release: Li6, Li7, H1, H2, H3, He3 and O16 neutron data, H and O photon data,
-and the transmutation chain. The tokamak is listed but not run: its lead is too
-much data for a check.
+the native wheel's to the printed digit, that the Li-6 sphere's tally passes its
+statistical checks, the plot frames and the geometry viewer, that a rerun
+fetches nothing, that the lithium transmutation chain reaches only H, He and Li,
+tracebacks, the mesh-geometry error, the error for a script that sets no
+library, a Rust panic, Stop (both the interrupt and the restart), that only
+edited code is kept as a draft, share links, and that nothing but Pyodide and
+yamc-core (from PyPI, unless the build was given `--wheel`) is fetched from
+another origin. CI runs the same against the published data
+`scripts/fetch-fixtures.mjs` lists, from the current endf-b8.1 release: Li6,
+Li7, H1, H2, H3, He3 and O16 neutron data, H and O photon data, and the
+transmutation chain. The tokamak is listed but not run: its lead is too much
+data for a check.
 
 ## How it works
 
