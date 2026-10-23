@@ -28,7 +28,7 @@ schedule = yamc.PulseSchedule([
 ])
 results = lithium.transmute(schedule=schedule)
 
-material_id = lithium.id or 0
+material_id = lithium.id
 gas = results.get_gas_production(material_id)
 print(f"Tritium made: {gas['H3'][1]:.1f} appm, helium-4: {gas['He4'][1]:.1f} appm")
 
