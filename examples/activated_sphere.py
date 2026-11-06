@@ -8,6 +8,11 @@ import math
 import yamc
 
 yamc.cross_section_data = "endf-b8.1"
+# The transmutation network: decay data, reaction products and fission yields.
+# These have no default, so a transmutation names the data it is made from.
+yamc.transmutation_decay_data = "endf-b8.1"
+yamc.transmutation_reactions = "endf-b8.1"
+yamc.transmutation_fission_yields = "endf-b8.1"
 
 # transmutable=True picks the materials to deplete; volume converts atom
 # densities into the activity of the whole sphere.

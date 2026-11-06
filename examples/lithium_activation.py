@@ -7,6 +7,11 @@
 import yamc
 
 yamc.cross_section_data = "endf-b8.1"
+# The transmutation network: decay data, reaction products and fission yields.
+# These have no default, so a transmutation names the data it is made from.
+yamc.transmutation_decay_data = "endf-b8.1"
+yamc.transmutation_reactions = "endf-b8.1"
+yamc.transmutation_fission_yields = "endf-b8.1"
 
 lithium = yamc.Material(
     composition={"Li6": 0.0759, "Li7": 0.9241}, density=0.534, temperature=294, volume=1000.0, name="lithium",
