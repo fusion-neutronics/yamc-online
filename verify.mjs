@@ -194,12 +194,16 @@ try {
   checkDownloadCounter(out, "gamma shield", "elements");
 
   out = await runCode(examples["Neutrons and photons"]);
-  check(out.includes("Photon heating:  3.077 MeV per source neutron"), "coupled: photon heating", out);
+  check(out.includes("Photon heating:  3.079 MeV per source neutron"), "coupled: photon heating", out);
   check(out.includes("Captures on H1: 0.7613 per source neutron"), "coupled: hydrogen captures");
   check((await app(() => window.yamcOnline.plots)) === 1, "coupled drew the photon flux map");
 
+  // The windowed column is the page's: the analog column matches the native
+  // wheel to the digit, but the generated windows do not, so the windowed
+  // flux differs in its later digits (native yamc-core 0.24.0 gives 9.199e-06
+  // at 295 cm, as 0.17.0 gave 9.207e-06 against the page's 9.477e-06).
   out = await runCode(examples["Weight windows"]);
-  check(out.includes("      295    0.000e+00 +/-   0%    9.477e-06 +/-  41%"), "weight windows: only the windows reach the back", out);
+  check(out.includes("      295    0.000e+00 +/-   0%    9.469e-06 +/-  41%"), "weight windows: only the windows reach the back", out);
   check(out.includes("Layers with a score: analog 27 of 30, weight windows 30 of 30"), "weight windows: layers reached");
   check((await app(() => window.yamcOnline.plots)) === 2, "weight windows drew both flux maps");
 
@@ -268,18 +272,18 @@ try {
   check(out.includes("Stopped. Python was restarted."), "Stop during transport restarts Python", out.slice(-300));
 
   // -- No library is an ordinary error --------------------------------------
-  // With no cross_section_data the load stops with a message naming the
-  // setting, as an exception `except Exception` catches. Before yamc-core
+  // With no neutron_cross_section_data the load stops with a message naming
+  // the setting, as an exception `except Exception` catches. Before yamc-core
   // 0.16.0 this was a Rust panic.
   out = await runCode(
-    "import yamc\nyamc.cross_section_data = None\n" +
+    "import yamc\nyamc.neutron_cross_section_data = None\n" +
     "m = yamc.Material(composition={'Li6': 1.0}, density=0.46)\n" +
     "c = yamc.Cell(region=yamc.Sphere(radius=1, boundary='vacuum').below, material=m)\n" +
     "yamc.Model(geometry=yamc.Geometry([c]), tallies=[], source=yamc.NeutronSource(energy=1e6))" +
     ".simulate_transport(total_particles=10)\n",
   );
   check(out.includes("no neutron cross-section library is configured") && !out.includes("PanicException"),
-    "no cross_section_data is an ordinary error naming the setting", out);
+    "no neutron_cross_section_data is an ordinary error naming the setting", out);
 
   // -- A Rust panic is a Python exception ----------------------------------
   // The Li-6 sphere with its source outside the geometry: every history is

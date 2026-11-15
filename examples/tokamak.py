@@ -9,8 +9,8 @@ import math
 
 import yamc
 
-# The nuclear data library, fetched on demand from yamc-data.xsplot.com.
-yamc.cross_section_data = "endf-b8.1"
+# The neutron cross-section library, fetched on demand from yamc-data.xsplot.com.
+yamc.neutron_cross_section_data = "endf-b8.1"
 
 # Lead-lithium eutectic with its lithium enriched to 90% Li-6.
 enrichment = 0.9

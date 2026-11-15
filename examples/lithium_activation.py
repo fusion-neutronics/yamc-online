@@ -6,7 +6,7 @@
 # fetches about 15 MB, most of it the decay data.
 import yamc
 
-yamc.cross_section_data = "endf-b8.1"
+yamc.neutron_cross_section_data = "endf-b8.1"
 # The transmutation network: decay data, reaction products and fission yields.
 # These have no default, so a transmutation names the data it is made from.
 yamc.transmutation_decay_data = "endf-b8.1"
