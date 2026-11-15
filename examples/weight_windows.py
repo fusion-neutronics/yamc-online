@@ -1,11 +1,11 @@
 # Weight windows: Co-60 gammas into 3 m of water, about 17 mean free paths.
 # An analog run loses every photon long before the back; weight windows split
 # photons as they go deeper and roulette them on the way back, so the same
-# number of source photons resolves the flux right through. H1, O16 and H and
-# O photon data: about 4.3 MB.
+# number of source photons resolves the flux right through. Photon transport
+# reads only photon data, H and O here: about 0.7 MB.
 import yamc
 
-yamc.cross_section_data = "endf-b8.1"
+yamc.photon_cross_section_data = "endf-b8.1"
 
 water = yamc.Material(composition={"H1": 2.0, "O16": 1.0}, density=1.0, temperature=294, name="water")
 

@@ -3,7 +3,7 @@
 # about 3.6 MB of nuclear data.
 import yamc
 
-yamc.cross_section_data = "endf-b8.1"
+yamc.neutron_cross_section_data = "endf-b8.1"
 
 water = yamc.Material(composition={"H1": 2.0, "O16": 1.0}, density=1.0, temperature=294, name="water")
 

@@ -3,8 +3,8 @@
 # megabyte of nuclear data), a second or two to run.
 import yamc
 
-# The nuclear data library, fetched on demand from yamc-data.xsplot.com.
-yamc.cross_section_data = "endf-b8.1"
+# The neutron cross-section library, fetched on demand from yamc-data.xsplot.com.
+yamc.neutron_cross_section_data = "endf-b8.1"
 
 lithium = yamc.Material(composition={"Li6": 1.0}, density=0.46, temperature=294, name="Li6")
 

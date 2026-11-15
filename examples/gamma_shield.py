@@ -1,12 +1,12 @@
 # Gamma shielding: a pencil beam of Co-60 gammas (1.17 and 1.33 MeV) onto
 # 60 cm of water, with the photon flux scored in ten 6 cm layers and set
-# against the narrow-beam answer, the photons that never scatter. H1, O16 and
-# H and O photon data: about 4.3 MB.
+# against the narrow-beam answer, the photons that never scatter. Photon
+# transport reads only photon data, H and O here: about 0.7 MB.
 import math
 
 import yamc
 
-yamc.cross_section_data = "endf-b8.1"
+yamc.photon_cross_section_data = "endf-b8.1"
 
 water = yamc.Material(composition={"H1": 2.0, "O16": 1.0}, density=1.0, temperature=294, name="water")
 

@@ -2,7 +2,7 @@
 # Li-6 core, drawn over the geometry. Li6, H1 and O16: about 4.1 MB of data.
 import yamc
 
-yamc.cross_section_data = "endf-b8.1"
+yamc.neutron_cross_section_data = "endf-b8.1"
 
 lithium = yamc.Material(composition={"Li6": 1.0}, density=0.46, temperature=294, name="Li6")
 water = yamc.Material(composition={"H1": 2.0, "O16": 1.0}, density=1.0, temperature=294, name="water")

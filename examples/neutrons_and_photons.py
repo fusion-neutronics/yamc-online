@@ -5,7 +5,10 @@
 # and H and O photon data: about 4.3 MB.
 import yamc
 
-yamc.cross_section_data = "endf-b8.1"
+# Coupled transport needs both libraries: neutron data for the neutrons and the
+# gammas they make, photon data for how those gammas interact.
+yamc.neutron_cross_section_data = "endf-b8.1"
+yamc.photon_cross_section_data = "endf-b8.1"
 
 water = yamc.Material(composition={"H1": 2.0, "O16": 1.0}, density=1.0, temperature=294, name="water")
 

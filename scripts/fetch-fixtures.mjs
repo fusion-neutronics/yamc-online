@@ -18,10 +18,10 @@ import { fileURLToPath } from "node:url";
 
 const ORIGIN = "https://yamc-data.xsplot.com/endf-b8.1";
 // What verify.mjs's examples use: the Li-6 sphere (Li6), the water slab, the
-// mesh tally, the gamma shield, the weight windows and the coupled example
-// (H1, O16, Li6, and H and O photon data), and the two lithium transmutation
-// examples (Li7, and the H2, H3 and He3 their chain reaches, and the chain
-// itself). The tokamak is listed, not run.
+// mesh tally and the coupled example (H1, O16, Li6, and H and O photon data),
+// the gamma shield and the weight windows (H and O photon data only), and the
+// two lithium transmutation examples (Li7, and the H2, H3 and He3 their chain
+// reaches, and the chain itself). The tokamak is listed, not run.
 export const NEUTRON = ["Li6", "H1", "O16", "Li7", "H2", "H3", "He3"];
 export const PHOTON = ["H", "O"];
 export const TRANSMUTATION = ["decay", "reactions", "fission_yields", "branching"];
