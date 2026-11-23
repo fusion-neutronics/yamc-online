@@ -47,7 +47,7 @@ tbr = yamc.Tally(cells=blanket, scores=["H3-production"], nuclides=["Li6", "Li7"
 heating = yamc.Tally(cells=blanket, scores=["heating"], name="blanket heating")
 
 model = yamc.Model(geometry=geometry, tallies=[tbr, heating], source=source)
-results = model.simulate_transport(total_particles=5_000, seed=1)
+results = model.simulate_transport()
 
 for nuclide, mean, std in zip(["Li6", "Li7", "total"], results[tbr].mean, results[tbr].standard_deviation):
     print(f"TBR from {nuclide:5s}: {mean:.4f} +/- {std:.1e}")

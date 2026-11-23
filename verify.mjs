@@ -77,6 +77,16 @@ context.on("requestfailed", (r) => { if (isData(r)) dataInFlight--; });
 
 /// The download counter's lines in `out`: one, reading "Downloaded M of M",
 /// is what a run that fetched anything should leave.
+// The examples run until every scored bin passes the statistical checks, and
+// where that stops depends on wall time (the figure-of-merit checks), so
+// values are checked against the native answer within its error.
+const CONVERGED = "Every scored bin passed the standard statistical checks";
+function near(out, re, expected, tolerance, label) {
+  const m = out.match(re);
+  const got = m ? parseFloat(m[1]) : NaN;
+  check(Math.abs(got - expected) <= tolerance, label, m ? m[0] : out.slice(-300));
+}
+
 function checkDownloadCounter(out, label, what) {
   const lines = out.split("\n").filter((l) => l.startsWith("Downloaded "));
   const m = lines.length === 1 && lines[0].match(/^Downloaded (\d+) of (\d+) (.+)$/);
@@ -127,8 +137,8 @@ try {
   // statistical checks. Where it stops depends on wall time (the figure-of-
   // merit checks), so the value is not pinned to the digit as a fixed
   // particle count would be.
-  check(out.includes("Statistical checks passed for every tally") && out.includes("Tritium production: "),
-    "the lithium sphere runs until its statistical checks pass", out);
+  check(out.includes(CONVERGED), "the lithium sphere runs until its statistical checks pass", out);
+  near(out, /Tritium production: ([0-9.e+-]+)/, 1.260, 0.02, "lithium: tritium production matches native");
   // The transport's verdict on the tally's statistical checks, which the
   // TallyResult in the Plots tab shows too.
   const lithiumVerdict = out.split("\n").find((l) => l.trimStart().startsWith("tritium production:")) ?? "";
@@ -179,8 +189,9 @@ try {
     return out;
   });
   out = await runCode(examples["Shielding slab"]);
-  check(out.includes("     3.0    1.1927e+01 +/- 9.7e-02"), "slab: flux in the first layer matches native", out);
-  check(out.includes("Front to back attenuation: 13.5x"), "slab: attenuation matches native");
+  check(out.includes(CONVERGED), "slab: runs until its statistical checks pass", out);
+  near(out, /^ +3\.0 +([0-9.e+-]+)/m, 11.93, 0.3, "slab: flux in the first layer matches native");
+  near(out, /Front to back attenuation: ([0-9.]+)x/, 13.7, 0.8, "slab: attenuation matches native");
   out = await runCode(examples["Mesh tally"]);
   check(out.includes("3600 mesh voxels, peak flux 3.876e-01"), "mesh tally matches native", out);
   check((await app(() => window.yamcOnline.plots)) === 1, "mesh tally drew its map");
@@ -188,8 +199,9 @@ try {
   // -- Photons ---------------------------------------------------------------
   // Values taken from the page with the wheel in vendor/, against the fixtures.
   out = await runCode(examples["Gamma shielding"]);
-  check(out.includes("      3.0    1.1139e+01 +/- 6.6e-02      4.9633e+00     2.24"), "gamma shield: flux in the first layer", out);
-  check(out.includes("     57.0    2.1110e+00 +/- 4.0e-02      1.6434e-01    12.85"), "gamma shield: flux in the last layer");
+  check(out.includes(CONVERGED), "gamma shield: runs until its statistical checks pass", out);
+  near(out, /^ +3\.0 +([0-9.e+-]+)/m, 11.05, 0.3, "gamma shield: flux in the first layer");
+  near(out, /^ +57\.0 +([0-9.e+-]+)/m, 2.16, 0.15, "gamma shield: flux in the last layer");
   check((await app(() => window.yamcOnline.plots)) === 2, "gamma shield drew the tally and the geometry");
   fetched = await app(() => window.yamcOnline.fetched);
   const photonData = fetched.filter((f) => f.kind === "photon").map((f) => f.name).sort().join(",");
@@ -310,7 +322,7 @@ try {
   out = await runCode(examples["Lithium sphere"]);
   // The example runs until its statistical checks pass, and the stop point
   // depends on wall time (the figure-of-merit checks), so no exact value.
-  check(out.includes("Statistical checks passed for every tally") && out.includes("Tritium production: "),
+  check(out.includes(CONVERGED) && out.includes("Tritium production: "),
     "Python runs the example to convergence again after a panic", out.slice(-300));
 
   // -- Completion list is readable in the dark palette ---------------------
@@ -387,12 +399,12 @@ try {
     await live.evaluate((c) => { window.yamcOnline.setCode(c); window.yamcOnline.run(); }, examples["Lithium sphere"]);
     await live.waitForFunction(() => window.yamcOnline.state === "ready" && window.yamcOnline.plots > 0, null, { timeout: RUN_TIMEOUT });
     const liveOut = await live.textContent("#output");
-    check(liveOut.includes("Tritium production: 3.2849e-02"), "live: the published data gives the same answer", liveOut);
+    near(liveOut, /Tritium production: ([0-9.e+-]+)/, 1.260, 0.02, "live: the published data gives the same answer");
     // And the published photon data, through the gamma shield.
     await live.evaluate((c) => { window.yamcOnline.setCode(c); window.yamcOnline.run(); }, examples["Gamma shielding"]);
     await live.waitForFunction(() => window.yamcOnline.state === "ready" && window.yamcOnline.plots > 0, null, { timeout: RUN_TIMEOUT });
     const livePhoton = await live.textContent("#output");
-    check(livePhoton.includes("      3.0    1.1139e+01 +/- 6.6e-02"), "live: the published photon data gives the same answer", livePhoton);
+    near(livePhoton, /^ +3\.0 +([0-9.e+-]+)/m, 11.05, 0.3, "live: the published photon data gives the same answer");
     await live.close();
   }
 
