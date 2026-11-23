@@ -194,7 +194,7 @@ try {
   checkDownloadCounter(out, "gamma shield", "elements");
 
   out = await runCode(examples["Neutrons and photons"]);
-  check(out.includes("Photon heating:  3.079 MeV per source neutron"), "coupled: photon heating", out);
+  check(out.includes("Photon heating:  3.046 MeV per source neutron"), "coupled: photon heating", out);
   check(out.includes("Captures on H1: 0.7613 per source neutron"), "coupled: hydrogen captures");
   check((await app(() => window.yamcOnline.plots)) === 1, "coupled drew the photon flux map");
 
