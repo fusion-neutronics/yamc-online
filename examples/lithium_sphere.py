@@ -1,4 +1,4 @@
-# Lithium sphere: 14 MeV neutrons into a sphere of, scoring tritium production.
+# Lithium sphere: 14 MeV neutrons into a sphere of lithium, scoring tritium production.
 
 import yamc
 
@@ -8,7 +8,7 @@ yamc.neutron_cross_section_data = "endf-b8.1"
 lithium = yamc.Material(
   composition={"Li": 1.0},
   density=0.56,
-  name="TBR-tally"
+  name="lithium"
 )
 
 sphere = yamc.Sphere(radius=100.0, boundary="vacuum")
@@ -33,7 +33,7 @@ model = yamc.Model(
 results = model.simulate_transport()
 
 result = results[tally1]
-print(f"Tritium production: {result.mean} +/- {result.standard_deviation} per source neutron")
+print(f"Tritium production: {result.mean[0]:.4e} +/- {result.standard_deviation[0]:.1e} per source neutron")
 
 # show() renders anything with a rich display into the Plots tab.
 show(result)
