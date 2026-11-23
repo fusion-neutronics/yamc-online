@@ -29,7 +29,7 @@ them.
   during one Stop restarts Python instead, and the nuclear data is fetched again
   on the next run.
 
-The examples menu opens on a Li-6 sphere, and also has a water shielding slab,
+The examples menu opens on a lithium sphere, and also has a water shielding slab,
 a mesh tally, a gamma shield (a photon source), coupled neutron and photon
 transport, weight windows for deep penetration, a tokamak with a PbLi
 breeder blanket (about 44 MB of nuclear data on its first run), lithium
