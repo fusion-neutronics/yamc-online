@@ -35,7 +35,7 @@ source = yamc.PhotonSource(
 
 flux = yamc.Tally(cells=cells, particle="photon", scores=["flux"], name="photon flux per layer")
 model = yamc.Model(geometry=geometry, tallies=[flux], source=source)
-results = model.simulate_transport(total_particles=20_000, seed=1)
+results = model.simulate_transport()
 
 
 def mu(energy):

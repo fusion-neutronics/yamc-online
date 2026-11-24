@@ -77,6 +77,16 @@ context.on("requestfailed", (r) => { if (isData(r)) dataInFlight--; });
 
 /// The download counter's lines in `out`: one, reading "Downloaded M of M",
 /// is what a run that fetched anything should leave.
+// The examples run until every scored bin passes the statistical checks, and
+// where that stops depends on wall time (the figure-of-merit checks), so
+// values are checked against the native answer within its error.
+const CONVERGED = "Every scored bin passed the standard statistical checks";
+function near(out, re, expected, tolerance, label) {
+  const m = out.match(re);
+  const got = m ? parseFloat(m[1]) : NaN;
+  check(Math.abs(got - expected) <= tolerance, label, m ? m[0] : out.slice(-300));
+}
+
 function checkDownloadCounter(out, label, what) {
   const lines = out.split("\n").filter((l) => l.startsWith("Downloaded "));
   const m = lines.length === 1 && lines[0].match(/^Downloaded (\d+) of (\d+) (.+)$/);
@@ -115,24 +125,25 @@ try {
   check(await app(() => self.crossOriginIsolated), "cross-origin isolated, so Stop can interrupt");
 
   const titles = await app(() => [...document.getElementById("example").options].map((o) => o.text));
-  check(titles.join("|") === "Li-6 sphere|Shielding slab|Mesh tally|Gamma shielding|Neutrons and photons|Weight windows|Tokamak|Lithium activation|Activated sphere", "examples menu", titles.join(", "));
+  check(titles.join("|") === "Lithium sphere|Shielding slab|Mesh tally|Gamma shielding|Neutrons and photons|Weight windows|Tokamak|Lithium activation|Activated sphere", "examples menu", titles.join(", "));
 
   // -- The default example, with one click ----------------------------------
-  // What a first visitor gets: the editor holds the Li-6 sphere, and Run.
-  check((await app(() => window.yamcOnline.code())).startsWith("# Li-6 sphere:"), "the editor opens on the Li-6 sphere");
+  // What a first visitor gets: the editor holds the lithium sphere, and Run.
+  check((await app(() => window.yamcOnline.code())).startsWith("# Lithium sphere:"), "the editor opens on the lithium sphere");
   await page.click("#run");
   await page.waitForFunction(() => window.yamcOnline.state === "ready" && window.yamcOnline.plots > 0, null, { timeout: RUN_TIMEOUT });
   let out = await output();
-  // The native wheel gives this to the digit: the same Rust, the same seed.
-  check(out.includes("Tritium production: 3.2849e-02 +/- 3.8e-04 per source neutron"), "Li-6 tritium production matches native", out);
+  // The example sets no stop condition, so it runs until its tally passes the
+  // statistical checks. Where it stops depends on wall time (the figure-of-
+  // merit checks), so the value is not pinned to the digit as a fixed
+  // particle count would be.
+  check(out.includes(CONVERGED), "the lithium sphere runs until its statistical checks pass", out);
+  near(out, /Tritium production: ([0-9.e+-]+)/, 1.260, 0.02, "lithium: tritium production matches native");
   // The transport's verdict on the tally's statistical checks, which the
-  // TallyResult in the Plots tab shows too. Since core#417 the large-score
-  // tail slope is estimated from the 201 largest history scores, not 50: at
-  // 10 000 histories it came out below 3 for each of seeds 1 to 20, and the
-  // example printed FAILED. At 50 000 it is 3.6 to 4.2.
-  const li6Verdict = out.split("\n").find((l) => l.trimStart().startsWith("tritium production:")) ?? "";
-  check(li6Verdict.includes("checks=PASSED"), "Li-6: the tally passes its statistical checks", li6Verdict);
-  check((await app(() => window.yamcOnline.plots)) === 2, "Li-6 drew the tally and the geometry");
+  // TallyResult in the Plots tab shows too.
+  const lithiumVerdict = out.split("\n").find((l) => l.trimStart().startsWith("tritium production:")) ?? "";
+  check(lithiumVerdict.includes("checks=PASSED"), "lithium: the tally passes its statistical checks", lithiumVerdict);
+  check((await app(() => window.yamcOnline.plots)) === 2, "lithium drew the tally and the geometry");
   check((await page.locator("#plots iframe").count()) === 2, "two sandboxed plot frames");
   check((await page.getAttribute("#plots iframe", "sandbox")) === "allow-scripts", "plot frames are sandboxed");
   check(await page.isVisible('[data-panel="plots"]'), "a successful run lands on the Plots tab");
@@ -142,22 +153,24 @@ try {
   ok("geometry viewer drew a canvas");
   const progressLines = out.split("\n").filter((l) => l.startsWith("Progress:")).length;
   check(progressLines === 1, "progress lines collapse into one", `${progressLines} lines`);
-  checkDownloadCounter(out, "Li-6", "nuclides");
-  const li6Run = await app(() => window.yamcOnline.runFetch);
-  check(li6Run.batched > 1 && li6Run.batched <= li6Run.requests, "the downloads went out as a batch", JSON.stringify(li6Run));
+  checkDownloadCounter(out, "lithium", "nuclides");
+  const lithiumRun = await app(() => window.yamcOnline.runFetch);
+  check(lithiumRun.batched > 1 && lithiumRun.batched <= lithiumRun.requests, "the downloads went out as a batch", JSON.stringify(lithiumRun));
   check(dataPeak > 1, "data requests were in flight together", `peak ${dataPeak}`);
 
   // Besides the release index (latest.json and the manifest).
   const nuclearData = async () => (await app(() => window.yamcOnline.fetched)).filter((f) => f.kind !== "release");
   let fetched = await nuclearData();
-  check(fetched.length === 1 && fetched[0].name === "Li6", "fetched Li6 and nothing else", JSON.stringify(fetched));
-  const li6Bytes = fetched[0].bytes;
+  const names = fetched.map((f) => f.name).sort().join(",");
+  check(names === "Li6,Li7", "fetched Li6 and Li7 and nothing else", JSON.stringify(fetched));
+  const bytesOf = (f) => f.map((x) => x.bytes).reduce((a, b) => a + b, 0);
+  const lithiumBytes = bytesOf(fetched);
 
   // -- Reruns read the held data --------------------------------------------
   await app(() => window.yamcOnline.run());
   await page.waitForFunction(() => window.yamcOnline.state === "ready" && window.yamcOnline.plots > 0, null, { timeout: RUN_TIMEOUT });
   fetched = await nuclearData();
-  check(fetched[0].bytes === li6Bytes, "a rerun fetches nothing", `${fetched[0].bytes} vs ${li6Bytes}`);
+  check(bytesOf(fetched) === lithiumBytes, "a rerun fetches nothing", `${bytesOf(fetched)} vs ${lithiumBytes}`);
 
   // -- Data tab -------------------------------------------------------------
   await page.click('[data-tab="data"]');
@@ -176,8 +189,9 @@ try {
     return out;
   });
   out = await runCode(examples["Shielding slab"]);
-  check(out.includes("     3.0    1.1927e+01 +/- 9.7e-02"), "slab: flux in the first layer matches native", out);
-  check(out.includes("Front to back attenuation: 13.5x"), "slab: attenuation matches native");
+  check(out.includes(CONVERGED), "slab: runs until its statistical checks pass", out);
+  near(out, /^ +3\.0 +([0-9.e+-]+)/m, 11.93, 0.3, "slab: flux in the first layer matches native");
+  near(out, /Front to back attenuation: ([0-9.]+)x/, 13.7, 0.8, "slab: attenuation matches native");
   out = await runCode(examples["Mesh tally"]);
   check(out.includes("3600 mesh voxels, peak flux 3.876e-01"), "mesh tally matches native", out);
   check((await app(() => window.yamcOnline.plots)) === 1, "mesh tally drew its map");
@@ -185,8 +199,9 @@ try {
   // -- Photons ---------------------------------------------------------------
   // Values taken from the page with the wheel in vendor/, against the fixtures.
   out = await runCode(examples["Gamma shielding"]);
-  check(out.includes("      3.0    1.1139e+01 +/- 6.6e-02      4.9633e+00     2.24"), "gamma shield: flux in the first layer", out);
-  check(out.includes("     57.0    2.1110e+00 +/- 4.0e-02      1.6434e-01    12.85"), "gamma shield: flux in the last layer");
+  check(out.includes(CONVERGED), "gamma shield: runs until its statistical checks pass", out);
+  near(out, /^ +3\.0 +([0-9.e+-]+)/m, 11.05, 0.3, "gamma shield: flux in the first layer");
+  near(out, /^ +57\.0 +([0-9.e+-]+)/m, 2.16, 0.15, "gamma shield: flux in the last layer");
   check((await app(() => window.yamcOnline.plots)) === 2, "gamma shield drew the tally and the geometry");
   fetched = await app(() => window.yamcOnline.fetched);
   const photonData = fetched.filter((f) => f.kind === "photon").map((f) => f.name).sort().join(",");
@@ -214,12 +229,12 @@ try {
   check(out.includes("Tritium made: 392.0 appm, helium-4: 399.9 appm"), "lithium activation: gas production", out);
   check(out.includes("30 days of irradiation     5.1970e+13    H3 62.3%"), "lithium activation: activity at shutdown");
   check(out.includes("1 year more                3.0607e+13    H3 100.0%"), "lithium activation: activity after a year");
-  // What this run fetched: the earlier examples already hold Li6 and H1.
+  // What this run fetched: the earlier examples already hold Li6, Li7 and H1.
   fetched = (await app(() => window.yamcOnline.fetched)).filter((f) => !before.has(`${f.kind}/${f.name}`));
   const chain = fetched.filter((f) => f.kind === "transmutation").map((f) => f.name).sort().join(",");
   check(chain === "decay,fission_yields,reactions", "lithium activation fetched the transmutation chain", chain);
   const reached = fetched.filter((f) => f.kind === "neutron").map((f) => f.name).sort().join(",");
-  check(reached === "H2,H3,He3,Li7", "lithium's chain reaches only H, He and Li", reached);
+  check(reached === "H2,H3,He3", "lithium's chain reaches only H, He and Li", reached);
 
   out = await runCode(examples["Activated sphere"]);
   check(out.includes("Tritium bred in a year: 6.83 g"), "activated sphere: tritium bred", out);
@@ -229,8 +244,8 @@ try {
   // -- A rich line anywhere in the script is drawn ---------------------------
   // `model.plot()` above `show(result)` is drawn where it stands, before the
   // result, as a notebook cell would, and not only as the script's last line.
-  const reordered = examples["Li-6 sphere"].replace("show(result)\nmodel.plot()", "model.plot()\nshow(result)\nx = 1");
-  check(reordered !== examples["Li-6 sphere"], "the reordered script differs");
+  const reordered = examples["Lithium sphere"].replace("show(result)\nmodel.plot()", "model.plot()\nshow(result)\nx = 1");
+  check(reordered !== examples["Lithium sphere"], "the reordered script differs");
   await runCode(reordered);
   const captions = await app(() => [...document.querySelectorAll("#plots figcaption span")].map((s) => s.textContent));
   check(captions.length === 2 && captions[0] !== "TallyResult" && captions[1] === "TallyResult",
@@ -263,7 +278,7 @@ try {
 
   // Transport is one call into Rust, which never looks at the interrupt, so
   // Stop falls back to restarting Python once the grace period is up.
-  await app((c) => window.yamcOnline.setCode(c), examples["Li-6 sphere"].replace("total_particles=50_000", "total_particles=50_000_000"));
+  await app((c) => window.yamcOnline.setCode(c), examples["Lithium sphere"].replace("simulate_transport()", "simulate_transport(total_particles=50_000_000)"));
   await app(() => window.yamcOnline.run());
   await page.waitForFunction(() => document.getElementById("output").textContent.includes("Progress:"), null, { timeout: RUN_TIMEOUT });
   await page.click("#stop");
@@ -286,26 +301,29 @@ try {
     "no neutron_cross_section_data is an ordinary error naming the setting", out);
 
   // -- A Rust panic is a Python exception ----------------------------------
-  // The Li-6 sphere with its source outside the geometry: every history is
+  // The lithium sphere with its source outside the geometry: every history is
   // lost, and transport stops with a Rust panic ("Maximum lost particles
   // exceeded"). pyo3 turns the panic into PanicException, and the
   // interpreter carries on. Until core#396 a zero direction vector was the
   // trigger; it raises ValueError since. If core comes to raise an ordinary
   // exception here too, this needs another input that panics.
   //
-  // 100 histories, not the example's 50 000. The first panic comes once 11
-  // are lost either way, but more follow before the run stops, each with
-  // its lost-particle diagnostics: at 10 000 that was 145 panics and over a
-  // minute here, at 100 it is 7 and under a second.
-  const lost = examples["Li-6 sphere"]
+  // 100 histories, not the example's run to convergence. The first panic
+  // comes once 11 are lost either way, but more follow before the run stops,
+  // each with its lost-particle diagnostics: at 10 000 that was 145 panics and
+  // over a minute here, at 100 it is 7 and under a second.
+  const lost = examples["Lithium sphere"]
     .replace("position=(0.0, 0.0, 0.0)", "position=(100.0, 0.0, 0.0)")
-    .replace("total_particles=50_000", "total_particles=100");
-  check(lost.includes("position=(100.0, 0.0, 0.0)") && lost.includes("total_particles=100,"),
+    .replace("simulate_transport()", "simulate_transport(total_particles=100)");
+  check(lost.includes("position=(100.0, 0.0, 0.0)") && lost.includes("total_particles=100)"),
     "the script moves the source out of the sphere and runs 100 histories");
   out = await runCode(lost);
   check(out.includes("PanicException") && !out.includes("Restarting Python"), "a Rust panic is a Python exception, not a crash", out);
-  out = await runCode(examples["Li-6 sphere"]);
-  check(out.includes("Tritium production: 3.2849e-02"), "Python runs the example again after a panic");
+  out = await runCode(examples["Lithium sphere"]);
+  // The example runs until its statistical checks pass, and the stop point
+  // depends on wall time (the figure-of-merit checks), so no exact value.
+  check(out.includes(CONVERGED) && out.includes("Tritium production: "),
+    "Python runs the example to convergence again after a panic", out.slice(-300));
 
   // -- Completion list is readable in the dark palette ---------------------
   {
@@ -341,7 +359,7 @@ try {
     await dp.evaluate((c) => localStorage.setItem("yamc-online:draft", c), examples["Gamma shielding"]);
     await dp.reload();
     await dp.waitForFunction(() => window.yamcOnline);
-    check((await opened()).startsWith("# Li-6 sphere:"), "a draft that is an unedited example is not restored");
+    check((await opened()).startsWith("# Lithium sphere:"), "a draft that is an unedited example is not restored");
     const edited = `${examples["Gamma shielding"]}print("edited")\n`;
     await dp.evaluate((c) => window.yamcOnline.setCode(c), edited);
     await dp.waitForFunction(() => localStorage.getItem("yamc-online:draft") !== null && localStorage.getItem("yamc-online:draft").endsWith('print("edited")\n'));
@@ -378,15 +396,15 @@ try {
     const live = await context.newPage();
     await live.goto(`${base}#code=`);
     await live.waitForFunction(() => window.yamcOnline && window.yamcOnline.state === "ready", null, { timeout: RUN_TIMEOUT });
-    await live.evaluate((c) => { window.yamcOnline.setCode(c); window.yamcOnline.run(); }, examples["Li-6 sphere"]);
+    await live.evaluate((c) => { window.yamcOnline.setCode(c); window.yamcOnline.run(); }, examples["Lithium sphere"]);
     await live.waitForFunction(() => window.yamcOnline.state === "ready" && window.yamcOnline.plots > 0, null, { timeout: RUN_TIMEOUT });
     const liveOut = await live.textContent("#output");
-    check(liveOut.includes("Tritium production: 3.2849e-02"), "live: the published data gives the same answer", liveOut);
+    near(liveOut, /Tritium production: ([0-9.e+-]+)/, 1.260, 0.02, "live: the published data gives the same answer");
     // And the published photon data, through the gamma shield.
     await live.evaluate((c) => { window.yamcOnline.setCode(c); window.yamcOnline.run(); }, examples["Gamma shielding"]);
     await live.waitForFunction(() => window.yamcOnline.state === "ready" && window.yamcOnline.plots > 0, null, { timeout: RUN_TIMEOUT });
     const livePhoton = await live.textContent("#output");
-    check(livePhoton.includes("      3.0    1.1139e+01 +/- 6.6e-02"), "live: the published photon data gives the same answer", livePhoton);
+    near(livePhoton, /^ +3\.0 +([0-9.e+-]+)/m, 11.05, 0.3, "live: the published photon data gives the same answer");
     await live.close();
   }
 
