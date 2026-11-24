@@ -229,12 +229,12 @@ try {
   check(out.includes("Tritium made: 392.0 appm, helium-4: 399.9 appm"), "lithium activation: gas production", out);
   check(out.includes("30 days of irradiation     5.1970e+13    H3 62.3%"), "lithium activation: activity at shutdown");
   check(out.includes("1 year more                3.0607e+13    H3 100.0%"), "lithium activation: activity after a year");
-  // What this run fetched: the earlier examples already hold Li6 and H1.
+  // What this run fetched: the earlier examples already hold Li6, Li7 and H1.
   fetched = (await app(() => window.yamcOnline.fetched)).filter((f) => !before.has(`${f.kind}/${f.name}`));
   const chain = fetched.filter((f) => f.kind === "transmutation").map((f) => f.name).sort().join(",");
   check(chain === "decay,fission_yields,reactions", "lithium activation fetched the transmutation chain", chain);
   const reached = fetched.filter((f) => f.kind === "neutron").map((f) => f.name).sort().join(",");
-  check(reached === "H2,H3,He3,Li7", "lithium's chain reaches only H, He and Li", reached);
+  check(reached === "H2,H3,He3", "lithium's chain reaches only H, He and Li", reached);
 
   out = await runCode(examples["Activated sphere"]);
   check(out.includes("Tritium bred in a year: 6.83 g"), "activated sphere: tritium bred", out);
