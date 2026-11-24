@@ -162,7 +162,7 @@ def show(obj, title=None):
     """Draw an object in the Plots tab.
 
     Anything with a rich HTML display works: geometry and tally plots from
-    \`.plot()\`, a \`TallyResult\`, \`SimulationResults\`, a \`Material\`. A
+    \`.plot()\`, a \`TallyResult\`, \`TransportResults\`, a \`Material\`. A
     line of a script that is just such an object, such as \`model.plot()\`, is
     shown the same way wherever it stands, so it needs no call to this.
 

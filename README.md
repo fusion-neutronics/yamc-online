@@ -20,7 +20,7 @@ them.
 - **Plots** shows anything passed to `show()`, and every line of the script
   that is just an object with a rich display, as a notebook cell does: a
   `model.plot()` line draws the geometry wherever it stands. Geometry plots,
-  mesh tally plots, `TallyResult` and `SimulationResults` all work.
+  mesh tally plots, `TallyResult` and `TransportResults` all work.
 - **Data** lists the nuclear data fetched so far, per nuclide, and how much
   memory the session is using.
 - **Share** copies a link with the script compressed into it. The code travels
