@@ -24,17 +24,85 @@ const CONCURRENCY = 32;
 
 let page = null;
 
+/// One GET with the browser's HTTP cache left on, as `{ status, body }`.
+///
+/// The release's files are served `immutable` for a year, so a file or range
+/// fetched once is answered from the browser's cache afterwards: after a page
+/// reload, and after Stop restarts Python, whose in-memory copies go with it.
+/// latest.json, the one object that changes, is asked for with a new
+/// release-check query each time, so nothing stale can be served.
+async function get(target, range) {
+  const response = await fetch(target, { headers: range == null ? {} : { Range: range } });
+  // Only a success carries a body worth handing over, as in the synchronous
+  // path.
+  const body = response.ok ? new Uint8Array(await response.arrayBuffer()) : null;
+  return { status: response.status, body };
+}
+
+/// The spans of a multi-range `Range` value, `bytes=0-99,200-299`, or null for
+/// one range, no range, or a form this does not split.
+function spansOf(range) {
+  if (range == null || !range.includes(",")) return null;
+  const m = /^bytes=(.+)$/.exec(range.trim());
+  if (!m) return null;
+  const spans = m[1].split(",").map((p) => /^\s*(\d+)-(\d+)\s*$/.exec(p));
+  return spans.every(Boolean) ? spans.map((p) => [Number(p[1]), Number(p[2])]) : null;
+}
+
+/// Parts in flight at once within one split request.
+const PARTS_IN_FLIGHT = 16;
+
+/// A multi-range GET as one single-range GET per span, answered with the
+/// `multipart/byteranges` body the origin would have sent.
+///
+/// Browsers cache a single-range answer and not a multi-range one, which is
+/// most of the bytes a run reads: asked this way, a second run of the same data
+/// is answered from the cache. The body is what yamc's `parse_byteranges`
+/// reads: the boundary on the first line, each part's offset in its
+/// `Content-Range`. An origin that drops the Range header answers 200 with the
+/// whole file, which is handed over as such, as a direct request's would be.
+async function getSplit(target, spans) {
+  const parts = new Array(spans.length);
+  let next = 0;
+  let whole = null;
+  let failed = null;
+  const lane = async () => {
+    while (next < spans.length && !whole && !failed) {
+      const i = next++;
+      const [a, b] = spans[i];
+      const r = await get(target, `bytes=${a}-${b}`);
+      if (r.status === 200) whole = r;
+      else if (r.status !== 206 || !r.body || r.body.length !== b - a + 1) failed = r;
+      else parts[i] = r.body;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(PARTS_IN_FLIGHT, spans.length) }, lane));
+  if (whole) return whole;
+  if (failed) return { status: failed.status === 206 ? 0 : failed.status, body: null };
+  const boundary = "yamc-online-split-range";
+  const text = new TextEncoder();
+  const chunks = [];
+  spans.forEach(([a, b], i) => {
+    chunks.push(text.encode(`\r\n--${boundary}\r\nContent-Type: application/octet-stream\r\nContent-Range: bytes ${a}-${b}/*\r\n\r\n`), parts[i]);
+  });
+  chunks.push(text.encode(`\r\n--${boundary}--\r\n`));
+  const body = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+  let at = 0;
+  for (const c of chunks) {
+    body.set(c, at);
+    at += c.length;
+  }
+  return { status: 206, body };
+}
+
 async function answer(i, [url, range], ctl, arena, dataOrigin, alloc) {
   const target = url.startsWith(PUBLISHED_ORIGIN) ? dataOrigin + url.slice(PUBLISHED_ORIGIN.length) : url;
   const started = performance.now();
   let status = 0;
   let body = null;
   try {
-    const response = await fetch(target, { headers: range == null ? {} : { Range: range }, cache: "no-store" });
-    status = response.status;
-    // Only a success carries a body worth handing over, as in the
-    // synchronous path.
-    if (response.ok) body = new Uint8Array(await response.arrayBuffer());
+    const spans = spansOf(range);
+    ({ status, body } = spans ? await getSplit(target, spans) : await get(target, range));
   } catch {
     status = 0;
   }
