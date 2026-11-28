@@ -5,7 +5,7 @@
 | | |
 | --- | --- |
 | `src/index.html`, `src/app.js` | The page: editor, tabs, worker lifecycle. |
-| `src/worker.js` | Pyodide, installing yamc-core, the nuclear-data fetcher, running scripts. |
+| `src/worker.js` | Pyodide, installing yamc, the nuclear-data fetcher, running scripts. |
 | `src/fetcher.js` | The worker's helper that fetches a batch of nuclear-data requests concurrently. |
 | `examples/*.py` | The examples menu. Each opens with `# Title: description`. |
 | `vendor/` | `YAMC_CORE_VERSION`, `PYODIDE_VERSION`, the CodeMirror bundle, coi-serviceworker. Committed. |
@@ -20,8 +20,8 @@ node build.mjs
 node serve.mjs            # http://localhost:8000/
 ```
 
-The page installs yamc-core from PyPI, at the version `vendor/YAMC_CORE_VERSION`
-pins. `node build.mjs --wheel <path>` puts a local Pyodide wheel of yamc-core
+The page installs yamc from PyPI, at the version `vendor/YAMC_CORE_VERSION`
+pins. `node build.mjs --wheel <path>` puts a local Pyodide wheel of yamc
 in `dist/` and installs that instead, to try an unreleased core (see below) or
 to work offline; never publish a page built that way.
 
@@ -51,7 +51,7 @@ fetches nothing, that the lithium transmutation chain reaches only H, He and Li,
 tracebacks, the mesh-geometry error, the error for a script that sets no
 library, a Rust panic, Stop (both the interrupt and the restart), that only
 edited code is kept as a draft, share links, and that nothing but Pyodide and
-yamc-core (from PyPI, unless the build was given `--wheel`) is fetched from
+yamc (from PyPI, unless the build was given `--wheel`) is fetched from
 another origin. CI runs the same against the published data
 `scripts/fetch-fixtures.mjs` lists, from the current endf-b8.1 release: Li6,
 Li7, H1, H2, H3, He3 and O16 neutron data, H and O photon data, and the
@@ -64,13 +64,13 @@ data for a check.
 refuses to start in a classic worker. Transport is one synchronous call into
 wasm, so in the worker it blocks nothing the user can see.
 
-**yamc-core.** The worker installs it with micropip from its Pyodide wheel on
+**yamc.** The worker installs it with micropip from its Pyodide wheel on
 PyPI (platform tag `pyemscripten_2026_0_wasm32`, PEP 783). It fetches the wheel
 itself while Pyodide starts, rather than leaving it to `micropip.install`,
 which could only begin once Pyodide had: it reads the release from PyPI's JSON
 API, picks the file whose tag is the ABI in Pyodide's lock file, checks it
 against PyPI's sha256, and hands the bytes to `micropip.install("emfs:...")`.
-yamc-core has no dependencies, so micropip fetches nothing more.
+yamc has no dependencies, so micropip fetches nothing more.
 
 **Nuclear data.** The wheel's downloader is the same Rust as native yamc,
 deciding what to fetch per nuclide, but an Emscripten build has no sockets, so
@@ -119,14 +119,14 @@ so short tables do not sit in a tall box.
 does natively, and the session carries on. If Pyodide itself dies (out of
 memory, say) the page starts a new worker.
 
-## Moving to a new yamc-core or Pyodide
+## Moving to a new yamc or Pyodide
 
-Set `vendor/YAMC_CORE_VERSION` to the yamc-core release. Its Pyodide wheel's
+Set `vendor/YAMC_CORE_VERSION` to the yamc release. Its Pyodide wheel's
 platform tag (`pyemscripten_2026_0`) is the Pyodide ABI, so it only installs on
-the Pyodide it was built for: core builds it against the version in its
+the Pyodide it was built for: yamc-and-yani builds it against the version in its
 `ci-pyodide.yml`, and `vendor/PYODIDE_VERSION` has to be that same version. A
-Pyodide upgrade is a core release; a mismatch stops the page at start-up with
-"yamc-core X on PyPI has no wheel for Pyodide Y".
+Pyodide upgrade is a yamc release; a mismatch stops the page at start-up with
+"yamc X on PyPI has no wheel for Pyodide Y".
 
 To try a core that is not released, build its Pyodide wheel with
 [pyodide-build](https://pyodide.org/en/stable/development/building-packages-from-source.html)
@@ -135,10 +135,10 @@ and build the page with it:
 ```bash
 python3.14 -m venv .pyb && .pyb/bin/pip install pyodide-build
 .pyb/bin/pyodide xbuildenv install 314.0.7
-cd ../core/packages/yamc-core
+cd ../yamc-and-yani/packages/yamc
 MATURIN_PEP517_ARGS=--no-default-features ../../../yamc-online/.pyb/bin/pyodide build -o dist
 cd ../../../yamc-online
-node build.mjs --wheel ../core/packages/yamc-core/dist/yamc_core-<version>-cp310-abi3-pyemscripten_2026_0_wasm32.whl
+node build.mjs --wheel ../yamc-and-yani/packages/yamc/dist/yamc-<version>-cp310-abi3-pyemscripten_2026_0_wasm32.whl
 ```
 
 `--no-default-features` drops mesh geometry, CAD, GPU and the TLS stack, none of

@@ -4,7 +4,7 @@
 // The page is served from dist/ with core's nuclear-data fixtures beside it
 // (see serve.mjs), and opened with `?data=/fixtures/`, so the worker's own
 // fetch path is exercised against real data without the network. Pyodide
-// comes from the CDN and yamc-core from PyPI, as in production, unless the
+// comes from the CDN and yamc from PyPI, as in production, unless the
 // page was built with `node build.mjs --wheel <path>`: then the wheel is
 // installed from beside the page, and PyPI is not asked at all.
 //
@@ -25,7 +25,7 @@ import { WHEEL, YAMC_CORE_VERSION } from "./dist/config.js";
 import { NEUTRON, PHOTON, TRANSMUTATION } from "./scripts/fetch-fixtures.mjs";
 
 const PYODIDE_CDN = "https://cdn.jsdelivr.net";
-// Where yamc-core comes from when the page installs the PyPI release: the
+// Where yamc comes from when the page installs the PyPI release: the
 // JSON API naming the wheel, and the host serving it.
 const PYPI = ["https://pypi.org/", "https://files.pythonhosted.org/"];
 const RUN_TIMEOUT = 180_000;
@@ -120,8 +120,8 @@ try {
   await waitReady();
   const booted = await status();
   ok(`booted: ${booted}`);
-  if (WHEEL) ok(`installed yamc-core from ${WHEEL}, not PyPI`);
-  else check(booted.includes(`yamc ${YAMC_CORE_VERSION} `), `installed yamc-core ${YAMC_CORE_VERSION} from PyPI`, booted);
+  if (WHEEL) ok(`installed yamc from ${WHEEL}, not PyPI`);
+  else check(booted.includes(`yamc ${YAMC_CORE_VERSION} `), `installed yamc ${YAMC_CORE_VERSION} from PyPI`, booted);
   check(await app(() => self.crossOriginIsolated), "cross-origin isolated, so Stop can interrupt");
 
   const titles = await app(() => [...document.getElementById("example").options].map((o) => o.text));
@@ -216,9 +216,11 @@ try {
   // The windowed column is the page's: the analog column matches the native
   // wheel to the digit, but the generated windows do not, so the windowed
   // flux differs in its later digits (native yamc-core 0.24.0 gives 9.199e-06
-  // at 295 cm, as 0.17.0 gave 9.207e-06 against the page's 9.477e-06).
+  // at 295 cm, as 0.17.0 gave 9.207e-06 against the page's 9.477e-06). yamc
+  // 0.28.0 sets the windows' density reduction itself, and gives 8.133e-06
+  // +/- 31% where 0.27.0 gave 9.469e-06 +/- 41%.
   out = await runCode(examples["Weight windows"]);
-  check(out.includes("      295    0.000e+00 +/-   0%    9.469e-06 +/-  41%"), "weight windows: only the windows reach the back", out);
+  check(out.includes("      295    0.000e+00 +/-   0%    8.133e-06 +/-  31%"), "weight windows: only the windows reach the back", out);
   check(out.includes("Layers with a score: analog 27 of 30, weight windows 30 of 30"), "weight windows: layers reached");
   check((await app(() => window.yamcOnline.plots)) === 2, "weight windows drew both flux maps");
 
