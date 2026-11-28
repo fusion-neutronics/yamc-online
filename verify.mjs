@@ -192,6 +192,45 @@ try {
   check(out.includes(CONVERGED), "slab: runs until its statistical checks pass", out);
   near(out, /^ +3\.0 +([0-9.e+-]+)/m, 11.93, 0.3, "slab: flux in the first layer matches native");
   near(out, /Front to back attenuation: ([0-9.]+)x/, 13.7, 0.8, "slab: attenuation matches native");
+
+  // -- Another page reads what the browser kept --------------------------------
+  // The release files and byte ranges a run fetches are kept in Cache Storage,
+  // so a reload (here a second page of the same browser) reads them instead of
+  // asking the network, and a run that reads a library's current release drops
+  // its other releases. The slab is the first example to ask for ranges (of H1
+  // and O16), as well as whole files.
+  const keptKeys = (p) => p.evaluate(async () => (await (await caches.open("yamc-online-data")).keys()).map((r) => r.url));
+  // Kept after each answer is handed over, so not necessarily by the run's end.
+  const until = async (test) => {
+    for (let t = 0; t < 100 && !(await test()); t++) await new Promise((r) => setTimeout(r, 100));
+  };
+  await until(async () => (await keptKeys(page)).length > 0);
+  const kept = await keptKeys(page);
+  const ranges = kept.filter((u) => /\?bytes=\d+-\d+$/.test(u)).length;
+  check(ranges > 0 && ranges < kept.length && kept.every((u) => /\/fixtures\/[^/]+\/[^/]+\/[^/]+\/[^/]+\/[^/?]+(\?bytes=\d+-\d+)?$/.test(u)),
+    "the release files and ranges fetched are kept in Cache Storage, one entry each", `${kept.length} entries, ${ranges} of them ranges`);
+  const stale = kept[0].replace(/(\/fixtures\/[^/]+\/)[^/]+\//, "$1an-older-release/");
+  await page.evaluate(async (k) => (await caches.open("yamc-online-data")).put(k, new Response("x")), stale);
+  const reload = await context.newPage();
+  reload.on("pageerror", (e) => pageErrors.push(e.message));
+  // Every data request but the release index, latest.json and the manifest.
+  let asked = 0;
+  reload.context().on("request", (r) => { if (isData(r) && !/(latest|manifest)\.json(\?|$)/.test(r.url())) asked++; });
+  await reload.goto(`${base}?data=/fixtures/`);
+  await reload.waitForFunction(() => window.yamcOnline && window.yamcOnline.state === "ready", null, { timeout: RUN_TIMEOUT });
+  asked = 0;
+  await reload.evaluate((c) => { window.yamcOnline.setCode(c); window.yamcOnline.run(); }, examples["Shielding slab"]);
+  await reload.waitForFunction(() => window.yamcOnline.state !== "running", null, { timeout: RUN_TIMEOUT });
+  await reload.waitForFunction(() => window.yamcOnline.state === "ready", null, { timeout: RUN_TIMEOUT });
+  near(await reload.textContent("#output"), /^ +3\.0 +([0-9.e+-]+)/m, 11.93, 0.3, "after a reload, the kept data gives the same answer");
+  const again = await reload.evaluate(() => window.yamcOnline.runFetch);
+  check(again.cached > 0 && asked === 0, "after a reload, no data request but the release index goes to the network", `${asked} requests, ${again.cached} bytes from the browser`);
+  const reloadStatus = await reload.textContent("#status");
+  check(reloadStatus.includes("more already downloaded"), "the status says how much was already downloaded", reloadStatus);
+  await until(async () => !(await keptKeys(reload)).includes(stale));
+  const keptAfter = await keptKeys(reload);
+  check(!keptAfter.includes(stale) && keptAfter.length === kept.length, "a run drops the library's other releases and keeps the current one", `${keptAfter.length} of ${kept.length} entries`);
+  await reload.close();
   out = await runCode(examples["Mesh tally"]);
   check(out.includes("3600 mesh voxels, peak flux 3.876e-01"), "mesh tally matches native", out);
   check((await app(() => window.yamcOnline.plots)) === 1, "mesh tally drew its map");

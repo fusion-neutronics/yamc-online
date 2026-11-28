@@ -26,8 +26,8 @@ them.
 - **Share** copies a link with the script compressed into it. The code travels
   in the link itself; no server stores it.
 - **Stop** interrupts Python. A transport run cannot be interrupted midway, so
-  during one Stop restarts Python instead, and the nuclear data is fetched again
-  on the next run.
+  during one Stop restarts Python instead, and the next run reads the nuclear
+  data again from the browser, which keeps what was downloaded.
 
 The examples menu opens on a lithium sphere, and also has a water shielding slab,
 a mesh tally, a gamma shield (a photon source), coupled neutron and photon

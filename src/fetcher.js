@@ -24,67 +24,80 @@ const CONCURRENCY = 32;
 
 let page = null;
 
-/// One GET with the browser's HTTP cache left on, as `{ status, body }`.
-///
-/// The release's files are served `immutable` for a year, so a file or range
-/// fetched once is answered from the browser's cache afterwards: after a page
-/// reload, and after Stop restarts Python, whose in-memory copies go with it.
-/// latest.json, the one object that changes, is asked for with a new
-/// release-check query each time, so nothing stale can be served.
+/// One GET, as `{ status, body, type }`.
 async function get(target, range) {
   const response = await fetch(target, { headers: range == null ? {} : { Range: range } });
   // Only a success carries a body worth handing over, as in the synchronous
   // path.
   const body = response.ok ? new Uint8Array(await response.arrayBuffer()) : null;
-  return { status: response.status, body };
+  return { status: response.status, body, type: response.headers.get("Content-Type") || "" };
 }
 
-/// The spans of a multi-range `Range` value, `bytes=0-99,200-299`, or null for
-/// one range, no range, or a form this does not split.
+/// The inclusive `[first, last]` spans of a `Range` value, `bytes=0-99,200-299`,
+/// or null for no range or a form this does not read.
 function spansOf(range) {
-  if (range == null || !range.includes(",")) return null;
+  if (range == null) return null;
   const m = /^bytes=(.+)$/.exec(range.trim());
   if (!m) return null;
   const spans = m[1].split(",").map((p) => /^\s*(\d+)-(\d+)\s*$/.exec(p));
-  return spans.every(Boolean) ? spans.map((p) => [Number(p[1]), Number(p[2])]) : null;
+  if (!spans.every(Boolean)) return null;
+  const out = spans.map((p) => [Number(p[1]), Number(p[2])]);
+  return out.every(([a, b]) => a <= b) ? out : null;
 }
 
-/// Parts in flight at once within one split request.
-const PARTS_IN_FLIGHT = 16;
+const CRLF = (body, i) => body[i] === 13 && body[i + 1] === 10;
 
-/// A multi-range GET as one single-range GET per span, answered with the
-/// `multipart/byteranges` body the origin would have sent.
-///
-/// Browsers cache a single-range answer and not a multi-range one, which is
-/// most of the bytes a run reads: asked this way, a second run of the same data
-/// is answered from the cache. The body is what yamc's `parse_byteranges`
-/// reads: the boundary on the first line, each part's offset in its
-/// `Content-Range`. An origin that drops the Range header answers 200 with the
-/// whole file, which is handed over as such, as a direct request's would be.
-async function getSplit(target, spans) {
-  const parts = new Array(spans.length);
-  let next = 0;
-  let whole = null;
-  let failed = null;
-  const lane = async () => {
-    while (next < spans.length && !whole && !failed) {
-      const i = next++;
-      const [a, b] = spans[i];
-      const r = await get(target, `bytes=${a}-${b}`);
-      if (r.status === 200) whole = r;
-      else if (r.status !== 206 || !r.body || r.body.length !== b - a + 1) failed = r;
-      else parts[i] = r.body;
-    }
+/// A `multipart/byteranges` body as `[first, bytes]` parts, read as yamc's
+/// `parse_byteranges` reads it: the boundary from the first line, each part's
+/// length from its `Content-Range`, never by searching for the next boundary,
+/// which binary data could contain. Null if it is not one.
+function partsOf(body) {
+  const lineEnd = (from) => {
+    for (let i = from; i + 1 < body.length; i++) if (CRLF(body, i)) return i;
+    return -1;
   };
-  await Promise.all(Array.from({ length: Math.min(PARTS_IN_FLIGHT, spans.length) }, lane));
-  if (whole) return whole;
-  if (failed) return { status: failed.status === 206 ? 0 : failed.status, body: null };
-  const boundary = "yamc-online-split-range";
+  const text = (a, b) => new TextDecoder().decode(body.subarray(a, b));
+  let pos = 0;
+  while (CRLF(body, pos)) pos += 2;
+  let end = lineEnd(pos);
+  if (end < 0 || !text(pos, end).startsWith("--")) return null;
+  pos = end + 2;
+  const parts = [];
+  for (;;) {
+    let span = null;
+    for (;;) {
+      end = lineEnd(pos);
+      if (end < 0) return null;
+      const line = text(pos, end);
+      pos = end + 2;
+      if (line === "") break;
+      const m = /^content-range:\s*bytes\s+(\d+)-(\d+)\//i.exec(line);
+      if (m) span = [Number(m[1]), Number(m[2])];
+    }
+    if (!span) return null;
+    const length = span[1] - span[0] + 1;
+    if (pos + length > body.length) return null;
+    parts.push([span[0], body.subarray(pos, pos + length)]);
+    pos += length;
+    while (CRLF(body, pos)) pos += 2;
+    end = lineEnd(pos);
+    const delimiter = text(pos, end < 0 ? body.length : end);
+    if (!delimiter.startsWith("--")) return null;
+    if (delimiter.endsWith("--")) return parts;
+    pos = end + 2;
+  }
+}
+
+/// `[first, bytes]` parts as the `multipart/byteranges` body the origin would
+/// have sent for them.
+function byteranges(parts) {
+  const boundary = "yamc-online-stored-ranges";
   const text = new TextEncoder();
   const chunks = [];
-  spans.forEach(([a, b], i) => {
-    chunks.push(text.encode(`\r\n--${boundary}\r\nContent-Type: application/octet-stream\r\nContent-Range: bytes ${a}-${b}/*\r\n\r\n`), parts[i]);
-  });
+  for (const [first, bytes] of parts) {
+    chunks.push(text.encode(`\r\n--${boundary}\r\nContent-Type: application/octet-stream\r\n`
+      + `Content-Range: bytes ${first}-${first + bytes.length - 1}/*\r\n\r\n`), bytes);
+  }
   chunks.push(text.encode(`\r\n--${boundary}--\r\n`));
   const body = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
   let at = 0;
@@ -92,7 +105,114 @@ async function getSplit(target, spans) {
     body.set(c, at);
     at += c.length;
   }
-  return { status: 206, body };
+  return body;
+}
+
+/// The release files and ranges fetched, kept across reloads and restarts in
+/// the browser's Cache Storage, one entry per file, keyed by its URL, or per
+/// range, keyed `<url>?bytes=<first>-<last>`.
+///
+/// Not the HTTP cache, which never keeps a multi-range answer, and keeps a
+/// URL's single ranges in one entry that one request at a time can fill: with
+/// each multi-range request split into single ranges (as this worker did), the
+/// tokamak sent its 799 requests to the network again after a reload, and took
+/// 8.7 s and 17.6 s to load its data where a fresh page took 10.6 s. A
+/// release's files are immutable and named by release, so an entry never goes
+/// stale; `prune` drops a library's other releases once a run shows which one
+/// is current, and the browser drops entries under storage pressure, which
+/// costs only a download again. Null where there is no Cache Storage.
+const stored = (() => {
+  if (typeof caches === "undefined") return null;
+  let opened = null;
+  const open = () => (opened ??= caches.open("yamc-online-data").catch(() => null));
+  // The keys held, listed once: a fresh page's every range is a miss, and a
+  // lookup each would cost a fresh run time for nothing.
+  let listed = null;
+  const held = () => (listed ??= open()
+    .then(async (cache) => new Set(cache ? (await cache.keys()).map((request) => request.url) : []))
+    .catch(() => new Set()));
+  const key = (target, span) => (span ? `${target}?bytes=${span[0]}-${span[1]}` : target);
+  const pruned = new Set();
+  return {
+    /// The bytes held for `span` of `target`, or for the whole file if null.
+    async get(target, span) {
+      try {
+        const k = key(target, span);
+        if (!(await held()).has(k)) return null;
+        const hit = await (await open()).match(k);
+        const bytes = hit ? new Uint8Array(await hit.arrayBuffer()) : null;
+        return bytes && (!span || bytes.length === span[1] - span[0] + 1) ? bytes : null;
+      } catch {
+        return null;
+      }
+    },
+    put(target, span, bytes) {
+      const k = key(target, span);
+      held().then((keys) => keys.add(k)).catch(() => {});
+      open().then((cache) => cache && cache.put(k, new Response(bytes))).catch(() => {});
+    },
+    /// Drop what is held of `library`'s releases other than `release`, once
+    /// per library: `<base><library>/<release>/...` is a release's file.
+    prune(base, library, release) {
+      const id = `${base}${library}`;
+      if (pruned.has(id)) return;
+      pruned.add(id);
+      const prefix = `${id}/`;
+      const keep = `${prefix}${release}/`;
+      Promise.all([open(), held()]).then(([cache, keys]) => {
+        for (const k of keys) {
+          if (k.startsWith(prefix) && !k.startsWith(keep)) {
+            keys.delete(k);
+            if (cache) cache.delete(k).catch(() => {});
+          }
+        }
+      }).catch(() => {});
+    },
+  };
+})();
+
+/// A ranged GET answered from `stored` where it holds the spans, with one
+/// request to the network for the rest, as `{ status, body, downloaded,
+/// cached }`: the bytes that came over the network and from storage.
+///
+/// The answer is what the origin would have sent: the bytes for one range, a
+/// `multipart/byteranges` body for several, or, if the origin answers the rest
+/// with the whole file, that. An answer this cannot read into the spans asked
+/// for is fetched again as asked and handed over as it comes, uncached.
+async function getStored(target, range, spans) {
+  const parts = await Promise.all(spans.map((s) => stored.get(target, s)));
+  const cached = parts.reduce((n, p) => n + (p ? p.length : 0), 0);
+  const need = spans.flatMap((_, i) => (parts[i] ? [] : [i]));
+  let downloaded = 0;
+  if (need.length) {
+    const asked = need.map((i) => spans[i]);
+    const r = await get(target, `bytes=${asked.map(([a, b]) => `${a}-${b}`).join(",")}`);
+    if (r.status !== 206 || !r.body) return r;
+    const [a0, b0] = asked[0];
+    const got = asked.length === 1 && r.body.length === b0 - a0 + 1
+      ? [[a0, r.body]]
+      : /^multipart\/byteranges/i.test(r.type) ? partsOf(r.body) : null;
+    for (const i of need) {
+      const [a, b] = spans[i];
+      const part = got && got.find(([first, bytes]) => first <= a && b < first + bytes.length);
+      if (!part) return get(target, range);
+      parts[i] = part[1].subarray(a - part[0], b - part[0] + 1);
+      stored.put(target, [a, b], parts[i]);
+    }
+    downloaded = r.body.length;
+  }
+  const body = spans.length === 1 ? parts[0] : byteranges(spans.map(([a], i) => [a, parts[i]]));
+  return { status: 206, body, downloaded, cached };
+}
+
+/// A whole release file, from `stored` if it holds it, as `{ status, body,
+/// downloaded, cached }`.
+async function getWhole(target) {
+  const held = await stored.get(target, null);
+  if (held) return { status: 200, body: held, downloaded: 0, cached: held.length };
+  const r = await get(target, null);
+  if (r.status === 200 && r.body) stored.put(target, null, r.body);
+  return r;
 }
 
 async function answer(i, [url, range], ctl, arena, dataOrigin, alloc) {
@@ -100,9 +220,19 @@ async function answer(i, [url, range], ctl, arena, dataOrigin, alloc) {
   const started = performance.now();
   let status = 0;
   let body = null;
+  let downloaded = 0;
+  let cached = 0;
   try {
-    const spans = spansOf(range);
-    ({ status, body } = spans ? await getSplit(target, spans) : await get(target, range));
+    // A release's file, <library>/<release>/<kind>/<Name>.arrow/<section>, is
+    // kept; latest.json and the manifest are not.
+    const [library, release, ...rest] = target.startsWith(dataOrigin) ? target.slice(dataOrigin.length).split("/") : [];
+    const keep = stored && rest.length >= 2;
+    if (keep) stored.prune(dataOrigin, library, release);
+    const spans = keep && spansOf(range);
+    ({ status, body, downloaded, cached = 0 } = spans ? await getStored(target, range, spans)
+      : keep && range == null ? await getWhole(target)
+        : await get(target, range));
+    downloaded ??= body ? body.length : 0;
   } catch {
     status = 0;
   }
@@ -125,10 +255,19 @@ async function answer(i, [url, range], ctl, arena, dataOrigin, alloc) {
   ctl[3 + 3 * i] = status === 0 ? 0 : length;
   Atomics.add(ctl, 0, 1);
   Atomics.notify(ctl, 0);
-  if (page) page.postMessage({ type: "fetch", url, range, status, bytes: status === 0 ? 0 : length, ms: performance.now() - started, batched: true });
+  if (page) {
+    page.postMessage({
+      type: "fetch", url, range, status,
+      bytes: status === 0 ? 0 : downloaded,
+      cached: status === 0 ? 0 : cached,
+      ms: performance.now() - started, batched: true,
+    });
+  }
 }
 
 async function batch({ requests, ctl, arena, dataOrigin }) {
+  // Absolute, as Cache Storage lists its keys: `?data=/fixtures/` is relative.
+  dataOrigin = new URL(dataOrigin, self.location.href).href;
   // The bodies are appended to the arena, which grows as they arrive. This
   // worker is one thread, so the allocation needs no lock.
   let used = 0;

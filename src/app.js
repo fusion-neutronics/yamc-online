@@ -276,7 +276,7 @@ function clearResults() {
 // Per nuclide (or element, for photon data) across the session. Reruns read
 // from the in-memory cache and add nothing, so this is what the page holds.
 const fetched = new Map();
-let runFetch = { requests: 0, bytes: 0, batched: 0 };
+let runFetch = { requests: 0, bytes: 0, batched: 0, cached: 0 };
 // The latest "Downloaded 4 of 9 nuclides" line of this run, for the status bar.
 let downloading = null;
 let memory = { heap: 0, held: 0 };
@@ -292,14 +292,20 @@ function recordFetch(f) {
   const kind = inRelease ? parts[2] : "release";
   const name = inRelease ? parts[3].replace(/\.arrow$/, "") : "index";
   const key = `${library}/${kind}/${name}`;
-  const row = fetched.get(key) || { library, kind, name, requests: 0, bytes: 0, missing: 0 };
-  row.requests += 1;
+  const row = fetched.get(key) || { library, kind, name, requests: 0, bytes: 0, cached: 0, missing: 0 };
+  // `cached`: bytes the browser kept from an earlier visit, not downloaded. A
+  // request answered from them alone never went to the network.
+  const cached = f.cached || 0;
+  const sent = f.bytes > 0 || !cached;
+  if (sent) row.requests += 1;
   row.bytes += f.bytes;
+  row.cached += cached;
   if (f.status === 404) row.missing += 1;
   fetched.set(key, row);
-  runFetch.requests += 1;
+  if (sent) runFetch.requests += 1;
   runFetch.bytes += f.bytes;
-  if (f.batched) runFetch.batched += 1;
+  runFetch.cached += cached;
+  if (f.batched && sent) runFetch.batched += 1;
   setStatus(`${downloading || `Fetching ${name}`} (${mb(runFetch.bytes)} so far)`);
   if (!document.querySelector('[data-panel="data"]').hidden) renderData();
 }
@@ -308,11 +314,14 @@ function renderData() {
   const rows = [...fetched.values()].sort((a, b) => b.bytes - a.bytes);
   const total = rows.reduce((s, r) => s + r.bytes, 0);
   const requests = rows.reduce((s, r) => s + r.requests, 0);
+  const kept = rows.reduce((s, r) => s + r.cached, 0);
   const parts = [];
   parts.push(`<p>Nuclear data is fetched from <code>${escapeHtml(session.dataOrigin)}</code> the first time a
-    run needs it, only for the nuclides in the model's materials, and kept in memory so reruns fetch nothing.</p>`);
+    run needs it, only for the nuclides in the model's materials, and kept in memory so reruns fetch nothing.
+    The browser keeps what was downloaded, so a reload reads it from there.</p>`);
   parts.push(`<table><tbody>
     <tr><td>Downloaded this session</td><td class="num">${mb(total)}</td><td class="num">${requests} requests</td></tr>
+    <tr><td>Already downloaded, read from the browser</td><td class="num">${mb(kept)}</td><td></td></tr>
     <tr><td>Held in memory as files</td><td class="num">${mb(memory.held)}</td><td></td></tr>
     <tr><td>Python heap</td><td class="num">${mb(memory.heap)}</td><td class="num">of about 2048 MB</td></tr>
   </tbody></table>`);
@@ -322,11 +331,11 @@ function renderData() {
   }
   parts.push(`<p><button id="clear-data" ${state === "ready" && memory.held ? "" : "disabled"}>Clear held data</button></p>`);
   if (rows.length) {
-    parts.push(`<table><thead><tr><th>Nuclide</th><th>Library</th><th class="num">Requests</th><th class="num">Downloaded</th></tr></thead><tbody>`);
+    parts.push(`<table><thead><tr><th>Nuclide</th><th>Library</th><th class="num">Requests</th><th class="num">Downloaded</th><th class="num">From the browser</th></tr></thead><tbody>`);
     for (const r of rows) {
       const kind = r.kind === "neutron" ? "" : ` (${escapeHtml(r.kind)})`;
       parts.push(`<tr><td>${escapeHtml(r.name)}${kind}</td><td>${escapeHtml(r.library)}</td>
-        <td class="num">${r.requests}</td><td class="num">${mb(r.bytes)}</td></tr>`);
+        <td class="num">${r.requests}</td><td class="num">${mb(r.bytes)}</td><td class="num">${mb(r.cached)}</td></tr>`);
     }
     parts.push("</tbody></table>");
   } else {
@@ -434,7 +443,8 @@ function onWorkerMessage(msg) {
       clearTimeout(stopTimer);
       memory = msg.memory;
       setState("ready");
-      const fetchedNote = runFetch.requests ? `, fetched ${mb(runFetch.bytes)} of nuclear data` : "";
+      const keptNote = runFetch.cached ? ` (${mb(runFetch.cached)} more already downloaded)` : "";
+      const fetchedNote = runFetch.requests || runFetch.cached ? `, fetched ${mb(runFetch.bytes)} of nuclear data${keptNote}` : "";
       setStatus(`${msg.ok ? "Finished" : "Failed"} in ${msg.seconds.toFixed(1)} s${fetchedNote}`);
       // Land on what the run produced: its plots if it drew any and did not
       // fail, otherwise the output, where an error would be.
@@ -457,7 +467,7 @@ function onWorkerMessage(msg) {
         break;
       }
       appendOutput(`Python stopped: ${msg.message}`, "stderr");
-      restartWorker("Restarting Python. Downloaded nuclear data will be fetched again.");
+      restartWorker("Restarting Python. The next run reads its nuclear data from the browser again.");
       selectTab("output");
       break;
     default:
@@ -476,7 +486,7 @@ function run() {
   if (state !== "ready") return;
   clearResults();
   selectTab("output");
-  runFetch = { requests: 0, bytes: 0, batched: 0 };
+  runFetch = { requests: 0, bytes: 0, batched: 0, cached: 0 };
   downloading = null;
   setState("running");
   setStatus("Running...");

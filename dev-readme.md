@@ -95,6 +95,17 @@ anything on while it sleeps. A single request, and every request on a page
 that is not cross-origin isolated, is a synchronous `XMLHttpRequest` from the
 worker, as before.
 
+The helper keeps each release file and byte range it fetches in the browser's
+Cache Storage (`yamc-online-data`, one entry per file, keyed by its URL, or per
+range, keyed `<url>?bytes=<first>-<last>`), and answers from there before going
+to the network, so a reload or a restarted Python reads what was downloaded
+instead of fetching it again. The HTTP cache cannot do this for ranges: it never
+keeps a multi-range answer, and keeps a URL's single ranges in one entry that
+one request at a time can fill. A release's files never change, so an entry
+never goes stale; once a run reads a library's current release, the entries of
+its other releases are deleted. `latest.json` and the manifest are not kept, and
+the synchronous path does not use Cache Storage.
+
 The downloader prints `Downloaded 4 of 9 nuclides` as it goes. The page keeps
 one such line in the Output tab, as it does for transport's `Progress:` lines,
 and shows it in the status bar.
