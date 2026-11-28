@@ -216,9 +216,11 @@ try {
   // The windowed column is the page's: the analog column matches the native
   // wheel to the digit, but the generated windows do not, so the windowed
   // flux differs in its later digits (native yamc-core 0.24.0 gives 9.199e-06
-  // at 295 cm, as 0.17.0 gave 9.207e-06 against the page's 9.477e-06).
+  // at 295 cm, as 0.17.0 gave 9.207e-06 against the page's 9.477e-06). yamc
+  // 0.28.0 sets the windows' density reduction itself, and gives 8.133e-06
+  // +/- 31% where 0.27.0 gave 9.469e-06 +/- 41%.
   out = await runCode(examples["Weight windows"]);
-  check(out.includes("      295    0.000e+00 +/-   0%    9.469e-06 +/-  41%"), "weight windows: only the windows reach the back", out);
+  check(out.includes("      295    0.000e+00 +/-   0%    8.133e-06 +/-  31%"), "weight windows: only the windows reach the back", out);
   check(out.includes("Layers with a score: analog 27 of 30, weight windows 30 of 30"), "weight windows: layers reached");
   check((await app(() => window.yamcOnline.plots)) === 2, "weight windows drew both flux maps");
 
