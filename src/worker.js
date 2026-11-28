@@ -1,7 +1,7 @@
 // Python and yamc, off the main thread.
 //
 // A module worker, loaded from its own file next to the page: Pyodide refuses
-// to start in a classic one. Pyodide is imported from the CDN, and yamc-core
+// to start in a classic one. Pyodide is imported from the CDN, and yamc
 // is installed with micropip from its Pyodide wheel on PyPI (or from a local
 // wheel beside the page, for a build made with `--wheel`).
 // Transport is one synchronous call into wasm that returns when it is done, so
@@ -34,7 +34,7 @@ async function getJson(url, missing = null) {
 
 const hex = (buffer) => [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, "0")).join("");
 
-/// The yamc-core wheel to install, as `{ name, bytes }`: the local wheel the
+/// The yamc wheel to install, as `{ name, bytes }`: the local wheel the
 /// page was built with, or else the PyPI release's wheel for this Pyodide.
 ///
 /// Fetched while Pyodide starts, which is why this does not leave it to
@@ -50,12 +50,12 @@ async function fetchWheel({ pyodideBase, pyodideVersion, yamcCore, wheelUrl }) {
   } else {
     const [lock, release] = await Promise.all([
       getJson(`${pyodideBase}pyodide-lock.json`),
-      getJson(`https://pypi.org/pypi/yamc-core/${yamcCore}/json`, `yamc-core ${yamcCore} is not on PyPI`),
+      getJson(`https://pypi.org/pypi/yamc/${yamcCore}/json`, `yamc ${yamcCore} is not on PyPI`),
     ]);
     const platform = `pyemscripten_${lock.info.abi_version}_${lock.info.arch}`;
     file = release.urls.find((f) => f.filename.endsWith(`-${platform}.whl`));
     if (!file) {
-      throw new Error(`yamc-core ${yamcCore} on PyPI has no wheel for Pyodide ${pyodideVersion} (${platform})`);
+      throw new Error(`yamc ${yamcCore} on PyPI has no wheel for Pyodide ${pyodideVersion} (${platform})`);
     }
   }
   const r = await fetch(file.url);
@@ -312,7 +312,7 @@ const handlers = {
     if (interruptBuffer) pyodide.setInterruptBuffer(interruptBuffer);
     post({ type: "status", text: "Installing yamc" });
     // micropip installs from the bytes already fetched: it checks the wheel's
-    // tags against this Pyodide and puts it in site-packages. yamc-core has no
+    // tags against this Pyodide and puts it in site-packages. yamc has no
     // dependencies, so it asks nothing of the network.
     const { name, bytes } = await wheel;
     pyodide.FS.writeFile(`/tmp/${name}`, bytes);

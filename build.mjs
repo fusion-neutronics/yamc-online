@@ -1,10 +1,10 @@
 // Produce dist/: the page, its worker, and everything they load from beside
-// them. Pyodide comes from the jsDelivr CDN and yamc-core from PyPI, at the
+// them. Pyodide comes from the jsDelivr CDN and yamc from PyPI, at the
 // versions vendor/PYODIDE_VERSION and vendor/YAMC_CORE_VERSION pin.
 //
-//   node build.mjs [--wheel path/to/yamc_core-...-pyemscripten_..._wasm32.whl]
+//   node build.mjs [--wheel path/to/yamc-...-pyemscripten_..._wasm32.whl]
 //
-// `--wheel` copies a local Pyodide wheel of yamc-core into dist/ and installs
+// `--wheel` copies a local Pyodide wheel of yamc into dist/ and installs
 // that instead of the PyPI release: for trying an unreleased core, and for
 // checking the page offline. A published page is built without it.
 //
@@ -41,8 +41,8 @@ async function main() {
   const args = process.argv.slice(2);
   const wheelArg = args.indexOf("--wheel");
   const localWheel = wheelArg >= 0 ? resolve(args[wheelArg + 1] || "") : null;
-  if (localWheel && !/^yamc_core-.+-pyemscripten_\d+_\d+_wasm32\.whl$/.test(basename(localWheel))) {
-    throw new Error(`--wheel wants a Pyodide wheel of yamc-core (yamc_core-*-pyemscripten_*_wasm32.whl), not ${localWheel}`);
+  if (localWheel && !/^yamc-.+-pyemscripten_\d+_\d+_wasm32\.whl$/.test(basename(localWheel))) {
+    throw new Error(`--wheel wants a Pyodide wheel of yamc (yamc-*-pyemscripten_*_wasm32.whl), not ${localWheel}`);
   }
   const wheel = localWheel && basename(localWheel);
   const pyodideVersion = await text(new URL("PYODIDE_VERSION", VENDOR));
@@ -79,7 +79,7 @@ async function main() {
     ["index.html", "app.js", "worker.js", "config.js", "codemirror.js", ...(wheel ? [wheel] : [])].map(async (f) => [f, (await readFile(new URL(f, DIST))).length]),
   );
   console.log(sizes.map(([f, n]) => `dist/${f.padEnd(28)} ${mb(n)}`).join("\n"));
-  const core = wheel ? `yamc-core from ${wheel} (not PyPI)` : `yamc-core ${yamcCoreVersion} from PyPI`;
+  const core = wheel ? `yamc from ${wheel} (not PyPI)` : `yamc ${yamcCoreVersion} from PyPI`;
   console.log(`Pyodide ${pyodideVersion} from the CDN, ${core}, ${examples.length} examples`);
 }
 

@@ -4,7 +4,7 @@ name: Pages
 # Actions" rather than a branch: dist/ only exists after `node build.mjs`, and
 # it is not committed.
 #
-# No secrets. The page installs yamc-core from PyPI at the version
+# No secrets. The page installs yamc from PyPI at the version
 # vendor/YAMC_CORE_VERSION pins, and the CodeMirror bundle is committed under
 # vendor/, so the build needs nothing but Node.
 
@@ -36,7 +36,7 @@ jobs:
         run: node build.mjs | tee -a $GITHUB_STEP_SUMMARY
 
       - name: Verify it runs
-        # Runs the examples in Chromium, with yamc-core installed from PyPI,
+        # Runs the examples in Chromium, with yamc installed from PyPI,
         # against the published data that scripts/fetch-fixtures.mjs lists
         # (light neutron nuclides, H and O photon data, the transmutation
         # chain), fetched once up front and served locally, and checks the

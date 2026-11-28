@@ -60,4 +60,4 @@ its own transport. They are also in [examples/](examples/) as plain scripts.
 ## Development
 
 See [dev-readme.md](dev-readme.md) for building, testing, and moving to a new
-yamc-core release.
+yamc release.

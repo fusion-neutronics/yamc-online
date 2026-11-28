@@ -4,7 +4,7 @@
 // The page is served from dist/ with core's nuclear-data fixtures beside it
 // (see serve.mjs), and opened with `?data=/fixtures/`, so the worker's own
 // fetch path is exercised against real data without the network. Pyodide
-// comes from the CDN and yamc-core from PyPI, as in production, unless the
+// comes from the CDN and yamc from PyPI, as in production, unless the
 // page was built with `node build.mjs --wheel <path>`: then the wheel is
 // installed from beside the page, and PyPI is not asked at all.
 //
@@ -25,7 +25,7 @@ import { WHEEL, YAMC_CORE_VERSION } from "./dist/config.js";
 import { NEUTRON, PHOTON, TRANSMUTATION } from "./scripts/fetch-fixtures.mjs";
 
 const PYODIDE_CDN = "https://cdn.jsdelivr.net";
-// Where yamc-core comes from when the page installs the PyPI release: the
+// Where yamc comes from when the page installs the PyPI release: the
 // JSON API naming the wheel, and the host serving it.
 const PYPI = ["https://pypi.org/", "https://files.pythonhosted.org/"];
 const RUN_TIMEOUT = 180_000;
@@ -120,8 +120,8 @@ try {
   await waitReady();
   const booted = await status();
   ok(`booted: ${booted}`);
-  if (WHEEL) ok(`installed yamc-core from ${WHEEL}, not PyPI`);
-  else check(booted.includes(`yamc ${YAMC_CORE_VERSION} `), `installed yamc-core ${YAMC_CORE_VERSION} from PyPI`, booted);
+  if (WHEEL) ok(`installed yamc from ${WHEEL}, not PyPI`);
+  else check(booted.includes(`yamc ${YAMC_CORE_VERSION} `), `installed yamc ${YAMC_CORE_VERSION} from PyPI`, booted);
   check(await app(() => self.crossOriginIsolated), "cross-origin isolated, so Stop can interrupt");
 
   const titles = await app(() => [...document.getElementById("example").options].map((o) => o.text));
