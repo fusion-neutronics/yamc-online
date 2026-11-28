@@ -59,7 +59,7 @@ async function main() {
 
   await rm(DIST, { recursive: true, force: true });
   await mkdir(DIST, { recursive: true });
-  for (const f of ["index.html", "app.js", "worker.js", "fetcher.js"]) await copyFile(new URL(f, SRC), new URL(f, DIST));
+  for (const f of ["index.html", "app.js", "citations.js", "worker.js", "fetcher.js"]) await copyFile(new URL(f, SRC), new URL(f, DIST));
   for (const f of ["codemirror.js", "coi-serviceworker.min.js"]) await copyFile(new URL(f, VENDOR), new URL(f, DIST));
   if (wheel) await copyFile(pathToFileURL(localWheel), new URL(wheel, DIST));
   // GitHub Pages runs Jekyll otherwise, which would drop nothing here today
@@ -76,7 +76,7 @@ async function main() {
   await writeFile(new URL("config.js", DIST), config);
 
   const sizes = await Promise.all(
-    ["index.html", "app.js", "worker.js", "config.js", "codemirror.js", ...(wheel ? [wheel] : [])].map(async (f) => [f, (await readFile(new URL(f, DIST))).length]),
+    ["index.html", "app.js", "citations.js", "worker.js", "config.js", "codemirror.js", ...(wheel ? [wheel] : [])].map(async (f) => [f, (await readFile(new URL(f, DIST))).length]),
   );
   console.log(sizes.map(([f, n]) => `dist/${f.padEnd(28)} ${mb(n)}`).join("\n"));
   const core = wheel ? `yamc from ${wheel} (not PyPI)` : `yamc ${yamcCoreVersion} from PyPI`;

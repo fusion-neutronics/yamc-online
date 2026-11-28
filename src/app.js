@@ -9,6 +9,7 @@ import {
   HighlightStyle, syntaxHighlighting, tags,
 } from "./codemirror.js";
 import { PYODIDE_VERSION, YAMC_CORE_VERSION, WHEEL, EXAMPLES } from "./config.js";
+import { citeListHtml, dataSet } from "./citations.js";
 
 const PYODIDE_BASE = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
 const DRAFT_KEY = "yamc-online:draft";
@@ -330,6 +331,24 @@ function renderData() {
       clearing the held data, leaves more room.</p>`);
   }
   parts.push(`<p><button id="clear-data" ${state === "ready" && memory.held ? "" : "disabled"}>Clear held data</button></p>`);
+  // What to cite for every library this session read data from, before the
+  // list of files: the credit is the part of this tab that leaves the page.
+  const used = new Map();
+  for (const r of rows) {
+    if (r.kind === "release" || r.bytes + r.cached === 0) continue;
+    const keyword = r.library.split(" ")[0];
+    if (!used.has(keyword)) used.set(keyword, new Set());
+    used.get(keyword).add(dataSet(r.kind, r.name));
+  }
+  if (used.size) {
+    parts.push(`<h3 class="cite-heading">Cite the nuclear data</h3>
+      <p class="note">Results here rest on years of measurement and evaluation by the people who made
+      each library, and they ask to be cited wherever their data is used. Cite every library this
+      session read, alongside yamc, in any work that uses its results. A run's own record is
+      <code>results.runs[0]["data_releases"]</code>, with each library's release and its
+      <code>citations</code>.</p>`);
+    parts.push(citeListHtml(used));
+  }
   if (rows.length) {
     parts.push(`<table><thead><tr><th>Nuclide</th><th>Library</th><th class="num">Requests</th><th class="num">Downloaded</th><th class="num">From the browser</th></tr></thead><tbody>`);
     for (const r of rows) {

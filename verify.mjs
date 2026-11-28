@@ -23,6 +23,7 @@ import { chromium } from "playwright";
 import { serve, fixtureDir, FIXTURES, FETCHED_FIXTURES } from "./serve.mjs";
 import { WHEEL, YAMC_CORE_VERSION } from "./dist/config.js";
 import { NEUTRON, PHOTON, TRANSMUTATION } from "./scripts/fetch-fixtures.mjs";
+import { CREDITS, citations, citeListHtml, dataSet, doiUrl } from "./src/citations.js";
 
 const PYODIDE_CDN = "https://cdn.jsdelivr.net";
 // Where yamc comes from when the page installs the PyPI release: the
@@ -35,6 +36,27 @@ const ok = (msg) => console.log(`ok    ${msg}`);
 const check = (cond, msg, detail = "") => (cond ? ok(msg) : fail(`${msg}${detail ? `: ${detail}` : ""}`));
 
 const args = process.argv.slice(2);
+
+// -- What to cite, without a browser ------------------------------------------
+// The references are core's (credits.rs), so this checks their shape and the
+// page's use of them, not their text.
+check(Object.keys(CREDITS).join(",") === "endf-b8.1,jeff-4.0,jendl-5.0,tendl-2025,tendl-2017,fendl-3.2d,irdff-ii,ukdd-2012,ukdd-2020,ukfy-4.2",
+  "a credit for every hosted library keyword", Object.keys(CREDITS).join(","));
+for (const [id, c] of Object.entries(CREDITS)) {
+  const bad = c.references.filter((r) => (r.doi ? !/^10\.\d+\/\S+$/.test(r.doi) : !r.text.includes("processed for FISPACT-II by UKAEA")));
+  check(c.references.length > 0 && bad.length === 0, `${id}: every reference has a DOI, or is UKAEA's worded attribution`);
+}
+check(["neutron/Fe56", "photon/Fe", "thermal/c_H_in_H2O", "transmutation/reactions", "transmutation/branching",
+  "transmutation/decay", "transmutation/fission_yields"].map((p) => dataSet(...p.split("/"))).join(",")
+  === "neutron,photon,thermal,neutron,neutron,decay,fission_yields", "each fetched file's data set");
+const jeffRead = citations(new Map([["jeff-4.0", new Set(["neutron", "decay"])]]));
+check(jeffRead[0].references.map((r) => r.doi).join(",") === "10.82555/e9ajn-a3p20,10.82555/tw0c6-t1386",
+  "JEFF-4.0 is cited by the data sets read", jeffRead[0].references.map((r) => r.doi).join(","));
+check(citations(new Map([["not-a-library", new Set(["neutron"])]])).length === 0, "an unknown library is left out");
+const citeHtml = citeListHtml(new Map([["tendl-2017", new Set(["neutron"])], ["ukdd-2012", new Set(["decay"])]]));
+check(citeHtml.includes(`href="${doiUrl("10.1016/j.nds.2012.11.002")}"`) && citeHtml.includes("&quot;Modern Nuclear Data Evaluation"),
+  "the citation list links each DOI and escapes its text");
+check(/<li>decay_2012 data processed for FISPACT-II by UKAEA[^<]*<\/li>/.test(citeHtml), "and a reference with no DOI is text, with no link");
 
 // The neutron, photon and transmutation-chain data scripts/fetch-fixtures.mjs
 // lists. The tokamak is listed in the menu but not run: lead is too much data
@@ -176,6 +198,11 @@ try {
   await page.click('[data-tab="data"]');
   const dataText = await page.textContent("#data");
   check(dataText.includes("Li6") && dataText.includes("Python heap"), "Data tab lists the nuclide and the heap");
+  // The fixtures are ENDF/B-VIII.1's, so that is the one library to cite.
+  const cited = await page.$$eval("#data .cite-entry", (els) => els.map((el) => el.dataset.library));
+  check(cited.join(",") === "endf-b8.1", "Data tab cites the library the run read", cited.join(","));
+  check(await page.$$eval('#data .cite-entry a[href^="https://doi.org/"]', (els) => els.length) === 2,
+    "with ENDF/B-VIII.1's paper and data DOIs as links");
 
   // -- The other small examples ---------------------------------------------
   const examples = await app(() => {
